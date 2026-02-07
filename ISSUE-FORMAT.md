@@ -4,6 +4,13 @@
 **Status**: Draft
 **Author**: Emerson Soares <remenoscodes@gmail.com>
 **Date**: 2025-04-23
+**Minimum Git Version**: 2.17 (April 2018) — required for
+`%(trailers:key=...,valueonly)` format support.
+
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+"SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this
+document are to be interpreted as described in
+[RFC 2119](https://tools.ietf.org/html/rfc2119).
 
 ---
 
@@ -300,7 +307,7 @@ Other fields follow similar rules:
 
 | Field | Computation | Source |
 |-------|------------|--------|
-| Title | Subject line of root commit | Root commit only |
+| Title | Subject line of root commit, or most recent `Title:` trailer | Root or any commit |
 | Description | Body of root commit | Root commit only |
 | State | Most recent `State:` trailer | Any commit |
 | Labels | See Section 6 (merge rules) | Most recent `Labels:` trailer |
@@ -379,8 +386,9 @@ If a merge produces a conflict that cannot be resolved automatically
 1. Create a merge commit with a `Conflict:` trailer listing the
    conflicting fields
 2. The issue gets a `conflict` pseudo-label until resolved
-3. Implementations SHOULD provide a `git issue resolve` command to
-   allow the user to pick a resolution
+3. Implementations SHOULD provide a mechanism for manual conflict
+   resolution that allows the user to select a value for each
+   conflicting field
 
 ---
 
@@ -423,6 +431,14 @@ where full issue history is not needed locally.
 ---
 
 ## 8. Bridge Protocol
+
+> **Status: Planned — Not Yet Implemented**
+>
+> This section describes a future bridge protocol design. Current
+> implementations use direct provider integrations (e.g., `gh` CLI for
+> GitHub) rather than this protocol. The Provider-ID mechanism in
+> Section 9 is implemented and stable. This protocol will be
+> implemented when a second provider backend is needed.
 
 External issue trackers (GitHub, GitLab, Jira) can be bridged via
 provider plugins. A bridge plugin is a separate executable named
@@ -600,6 +616,7 @@ This specification was inspired by:
 
 ## References
 
+- [RFC 2119 - Key words for use in RFCs](https://tools.ietf.org/html/rfc2119)
 - [RFC 4122 - UUID](https://tools.ietf.org/html/rfc4122)
 - [gitformat-trailers(5)](https://git-scm.com/docs/git-interpret-trailers)
 - [gitformat-pack(5)](https://git-scm.com/docs/gitformat-pack)

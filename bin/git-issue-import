@@ -293,7 +293,23 @@ $body"
 		comment_name="$(printf '%s' "$comment_info" | head -1)"
 		comment_email="$(printf '%s' "$comment_info" | tail -1)"
 
-		printf '%s\n' "$comment_body" > "$tmpfile"
+		# Split comment into subject (max 72 chars) and body
+		first_line="$(printf '%s\n' "$comment_body" | head -1)"
+		remaining="$(printf '%s\n' "$comment_body" | tail -n +2)"
+
+		if test ${#first_line} -gt 72
+		then
+			# Long first line: truncate for subject, full text as body
+			comment_subject="$(printf '%.69s...' "$first_line")"
+			printf '%s\n\n%s\n' "$comment_subject" "$comment_body" > "$tmpfile"
+		elif test -n "$remaining"
+		then
+			# Multi-line: first line is subject, rest is body
+			printf '%s\n\n%s\n' "$first_line" "$remaining" > "$tmpfile"
+		else
+			# Short single-line: just subject
+			printf '%s\n' "$first_line" > "$tmpfile"
+		fi
 
 		new_commit="$(GIT_AUTHOR_NAME="$comment_name" \
 			GIT_AUTHOR_EMAIL="$comment_email" \
