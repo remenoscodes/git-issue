@@ -117,7 +117,7 @@ do
 			title="$(git log -1 --format='%s' "$root")"
 			printf '[new] %s: %s\n' "$short_id" "$title"
 		else
-			git update-ref "$local_ref" "$remote_head"
+			git update-ref -- "$local_ref" "$remote_head"
 			root="$(git rev-list --max-parents=0 "$local_ref")"
 			title="$(git log -1 --format='%s' "$root")"
 			printf 'Created %s: %s\n' "$short_id" "$title"
@@ -143,7 +143,7 @@ do
 		then
 			printf '[fast-forward] %s\n' "$short_id"
 		else
-			git update-ref "$local_ref" "$remote_head" "$local_head"
+			git update-ref -- "$local_ref" "$remote_head" "$local_head"
 			printf 'Fast-forwarded %s\n' "$short_id"
 			fast_forwarded=$((fast_forwarded + 1))
 		fi
@@ -317,10 +317,10 @@ do
 	fi
 
 	# Create merge commit with two parents
-	merge_commit="$(git commit-tree "$empty_tree" \
-		-p "$local_head" -p "$remote_head" < "$tmpfile")"
+	merge_commit="$(git commit-tree -p "$local_head" -p "$remote_head" \
+		-- "$empty_tree" < "$tmpfile")"
 
-	git update-ref "$local_ref" "$merge_commit" "$local_head"
+	git update-ref -- "$local_ref" "$merge_commit" "$local_head"
 
 	merged=$((merged + 1))
 	printf 'Merged %s (diverged at %s)\n' "$short_id" "$base_short"
@@ -332,7 +332,7 @@ then
 	git for-each-ref --format='%(refname)' "refs/remotes/$remote/issues/" | \
 		while IFS= read -r ref
 		do
-			git update-ref -d "$ref"
+			git update-ref -d -- "$ref"
 		done
 fi
 

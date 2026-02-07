@@ -76,9 +76,10 @@ Verify: `git issue version`
 | `git issue import` | Import issues from GitHub |
 | `git issue export` | Export issues to GitHub |
 | `git issue sync` | Two-way sync (import + export) |
+| `git issue search <pattern>` | Search issues by text |
 | `git issue merge <remote>` | Merge issues from a remote |
 | `git issue fsck` | Validate issue data integrity |
-| `git issue init` | Configure repo for issue tracking |
+| `git issue init [<remote>]` | Configure repo for issue tracking |
 
 ### Creating Issues
 
@@ -115,8 +116,22 @@ git issue ls                    # Open issues (default)
 git issue ls --all              # All issues
 git issue ls --state closed     # Closed issues
 git issue ls -l bug             # Filter by label
+git issue ls --assignee alice@example.com
+git issue ls --priority critical
+git issue ls --sort priority    # Sort by priority (desc)
+git issue ls --sort updated --reverse  # Oldest updates first
 git issue ls --format full      # Show labels, assignee, priority, milestone
 git issue ls --format oneline   # Scripting-friendly (no brackets)
+```
+
+Sort fields: `created` (default), `updated`, `priority`, `state`.
+
+### Searching
+
+```sh
+git issue search "crash"        # Search titles, bodies, and comments
+git issue search -i "firefox"   # Case-insensitive
+git issue search "bug" --state open  # Only open issues
 ```
 
 ### GitHub Bridge
@@ -264,7 +279,21 @@ the deliverable that makes ecosystem adoption possible.
 make test
 ```
 
-132 tests: 76 core + 36 bridge + 20 merge/fsck.
+153 tests: 76 core + 36 bridge + 20 merge/fsck + 21 QoL.
+
+## Performance Notes
+
+Each issue is one ref. For repositories with many issues (1000+),
+configure Git protocol v2 to avoid advertising all refs on every
+fetch:
+
+```sh
+git config protocol.version 2
+```
+
+Protocol v2 uses server-side filtering, so only requested refs are
+transferred. Without it, every `git fetch` advertises all refs
+including `refs/issues/*`.
 
 ## License
 

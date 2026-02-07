@@ -7,13 +7,15 @@ set -e
 
 usage() {
 	cat <<EOF
-usage: git issue init
+usage: git issue init [<remote>]
 
 Configure the current repository for git-issue tracking.
-Adds the refs/issues/* fetch refspec to the origin remote.
+Adds the refs/issues/* fetch refspec to the specified remote (default: origin).
 EOF
 	exit 1
 }
+
+remote="origin"
 
 while test $# -gt 0
 do
@@ -21,9 +23,17 @@ do
 		-h|--help)
 			usage
 			;;
-		*)
+		--)
+			shift
+			break
+			;;
+		-*)
 			echo "error: unknown option '$1'" >&2
 			usage
+			;;
+		*)
+			remote="$1"
+			shift
 			;;
 	esac
 done
@@ -34,15 +44,23 @@ git_dir="$(git rev-parse --git-dir 2>/dev/null)" || {
 	exit 128
 }
 
+# Verify the remote exists
+if ! git remote | grep -qx "$remote"
+then
+	echo "error: remote '$remote' does not exist" >&2
+	echo "       available remotes: $(git remote | paste -sd', ' -)" >&2
+	exit 1
+fi
+
 # Check if the refspec already exists
-existing="$(git config --get-all remote.origin.fetch 2>/dev/null || true)"
+existing="$(git config --get-all "remote.$remote.fetch" 2>/dev/null || true)"
 if printf '%s\n' "$existing" | grep -q 'refs/issues'
 then
-	echo "git-issue: already configured for this repository."
+	printf 'git-issue: already configured for remote '%s'.\n' "$remote"
 	exit 0
 fi
 
 # Add the fetch refspec for issues
-git config --add remote.origin.fetch '+refs/issues/*:refs/issues/*'
-echo "git-issue: configured. Issues will be fetched from origin."
-echo "Run 'git fetch origin' to pull existing issues."
+git config --add "remote.$remote.fetch" '+refs/issues/*:refs/issues/*'
+printf 'git-issue: configured. Issues will be fetched from %s.\n' "$remote"
+printf 'Run '\''git fetch %s'\'' to pull existing issues.\n' "$remote"

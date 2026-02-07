@@ -22,6 +22,7 @@ test:
 	@sh t/test-issue.sh
 	@sh t/test-bridge.sh
 	@sh t/test-merge.sh
+	@sh t/test-qol.sh
 
 clean:
 	rm -rf t/tmp-*

@@ -14,8 +14,12 @@ usage: git issue ls [options]
 Options:
    -s, --state <state>     Filter by state (open, closed, all) [default: open]
    -l, --label <label>     Filter by label
+   --assignee <email>      Filter by assignee
+   --priority <level>      Filter by priority (low, medium, high, critical)
    -a, --all               Show all issues (same as --state all)
    -f, --format <format>   Output format: short (default), full, oneline
+   --sort <field>          Sort by: created (default), updated, priority, state
+   --reverse               Reverse sort order
    -h, --help              Show this help
 
 Formats:
@@ -28,7 +32,11 @@ EOF
 
 filter_state="open"
 filter_label=""
+filter_assignee=""
+filter_priority=""
 output_format="short"
+sort_field="created"
+sort_reverse=0
 
 while test $# -gt 0
 do
@@ -43,6 +51,20 @@ do
 			filter_label="$2"
 			shift 2
 			;;
+		--assignee)
+			test $# -ge 2 || { echo "error: --assignee requires a value" >&2; exit 1; }
+			filter_assignee="$2"
+			shift 2
+			;;
+		--priority)
+			test $# -ge 2 || { echo "error: --priority requires a value" >&2; exit 1; }
+			case "$2" in
+				low|medium|high|critical) ;;
+				*) echo "error: priority must be low, medium, high, or critical" >&2; exit 1 ;;
+			esac
+			filter_priority="$2"
+			shift 2
+			;;
 		-a|--all)
 			filter_state="all"
 			shift
@@ -55,6 +77,19 @@ do
 			esac
 			output_format="$2"
 			shift 2
+			;;
+		--sort)
+			test $# -ge 2 || { echo "error: --sort requires a value" >&2; exit 1; }
+			case "$2" in
+				created|updated|priority|state) ;;
+				*) echo "error: sort must be created, updated, priority, or state" >&2; exit 1 ;;
+			esac
+			sort_field="$2"
+			shift 2
+			;;
+		--reverse)
+			sort_reverse=1
+			shift
 			;;
 		-h|--help)
 			usage
@@ -79,16 +114,9 @@ then
 	exit 0
 fi
 
-# For each issue ref, we need to get:
-# 1. The title (subject line of root commit)
-# 2. The current state (most recent State: trailer in the chain)
-#
-# The tip commit's subject gives us the LAST commit's subject, not the root.
-# We need the root commit's subject for the title.
-#
-# Strategy: Use for-each-ref to get ref names, then for each ref:
-# - Get root commit subject (title)
-# - Get current state from the chain
+# Collect issue data into a temp file for sorting
+data_file="$(mktemp)"
+trap 'rm -f "$data_file"' EXIT
 
 git for-each-ref --format='%(refname)' refs/issues/ | while IFS= read -r ref
 do
@@ -115,12 +143,26 @@ do
 		continue
 	fi
 
+	# Get metadata needed for filters and sorting
+	labels="$(git log --format='%(trailers:key=Labels,valueonly)' "$ref" | \
+		sed '/^$/d' | head -1)"
+	labels="$(printf '%s' "$labels" | sed 's/^[[:space:]]*//')"
+
+	issue_assignee="$(git log --format='%(trailers:key=Assignee,valueonly)' "$ref" | \
+		sed '/^$/d' | head -1)"
+	issue_assignee="$(printf '%s' "$issue_assignee" | sed 's/^[[:space:]]*//')"
+
+	issue_priority="$(git log --format='%(trailers:key=Priority,valueonly)' "$ref" | \
+		sed '/^$/d' | head -1)"
+	issue_priority="$(printf '%s' "$issue_priority" | sed 's/^[[:space:]]*//')"
+
+	issue_milestone="$(git log --format='%(trailers:key=Milestone,valueonly)' "$ref" | \
+		sed '/^$/d' | head -1)"
+	issue_milestone="$(printf '%s' "$issue_milestone" | sed 's/^[[:space:]]*//')"
+
 	# Apply label filter if specified
 	if test -n "$filter_label"
 	then
-		# Get labels from the most recent Labels: trailer
-		labels="$(git log --format='%(trailers:key=Labels,valueonly)' "$ref" | \
-			sed '/^$/d' | head -1)"
 		case ",$labels," in
 			*",$filter_label,"*|*", $filter_label,"*|*",$filter_label ,"*|*", $filter_label ,"*)
 				;;
@@ -130,25 +172,97 @@ do
 		esac
 	fi
 
+	# Apply assignee filter
+	if test -n "$filter_assignee"
+	then
+		if test "$issue_assignee" != "$filter_assignee"
+		then
+			continue
+		fi
+	fi
+
+	# Apply priority filter
+	if test -n "$filter_priority"
+	then
+		if test "$issue_priority" != "$filter_priority"
+		then
+			continue
+		fi
+	fi
+
+	# Get sort key
+	case "$sort_field" in
+		created)
+			root="$(git rev-list --max-parents=0 "$ref")"
+			sort_key="$(git log -1 --format='%at' "$root")"
+			;;
+		updated)
+			sort_key="$(git log -1 --format='%at' "$ref")"
+			;;
+		priority)
+			# Map to numeric: critical=4, high=3, medium=2, low=1, none=0
+			case "$issue_priority" in
+				critical) sort_key="4" ;;
+				high)     sort_key="3" ;;
+				medium)   sort_key="2" ;;
+				low)      sort_key="1" ;;
+				*)        sort_key="0" ;;
+			esac
+			;;
+		state)
+			# open=1, closed=0 (open first by default)
+			case "$state" in
+				open)   sort_key="1" ;;
+				closed) sort_key="0" ;;
+				*)      sort_key="0" ;;
+			esac
+			;;
+	esac
+
+	# Write tab-separated: sort_key \t short_id \t state \t title \t labels \t assignee \t priority \t milestone
+	printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+		"$sort_key" "$short_id" "$state" "$title" "$labels" "$issue_assignee" "$issue_priority" "$issue_milestone"
+done > "$data_file"
+
+# Sort the results
+if test "$sort_reverse" -eq 1
+then
+	case "$sort_field" in
+		created|updated)
+			sorted="$(sort -t'	' -k1,1n "$data_file")"
+			;;
+		priority)
+			sorted="$(sort -t'	' -k1,1n "$data_file")"
+			;;
+		state)
+			sorted="$(sort -t'	' -k1,1n "$data_file")"
+			;;
+	esac
+else
+	case "$sort_field" in
+		created|updated)
+			sorted="$(sort -t'	' -k1,1rn "$data_file")"
+			;;
+		priority)
+			sorted="$(sort -t'	' -k1,1rn "$data_file")"
+			;;
+		state)
+			sorted="$(sort -t'	' -k1,1rn "$data_file")"
+			;;
+	esac
+fi
+
+# Output the sorted results
+printf '%s\n' "$sorted" | while IFS='	' read -r _sort_key short_id state title labels issue_assignee issue_priority issue_milestone
+do
+	# Skip empty lines
+	test -n "$short_id" || continue
+
 	case "$output_format" in
 		oneline)
 			printf '%s %s %s\n' "$short_id" "$state" "$title"
 			;;
 		full)
-			# Fetch extra metadata
-			labels="$(git log --format='%(trailers:key=Labels,valueonly)' "$ref" | \
-				sed '/^$/d' | head -1)"
-			labels="$(printf '%s' "$labels" | sed 's/^[[:space:]]*//')"
-			issue_assignee="$(git log --format='%(trailers:key=Assignee,valueonly)' "$ref" | \
-				sed '/^$/d' | head -1)"
-			issue_assignee="$(printf '%s' "$issue_assignee" | sed 's/^[[:space:]]*//')"
-			issue_priority="$(git log --format='%(trailers:key=Priority,valueonly)' "$ref" | \
-				sed '/^$/d' | head -1)"
-			issue_priority="$(printf '%s' "$issue_priority" | sed 's/^[[:space:]]*//')"
-			issue_milestone="$(git log --format='%(trailers:key=Milestone,valueonly)' "$ref" | \
-				sed '/^$/d' | head -1)"
-			issue_milestone="$(printf '%s' "$issue_milestone" | sed 's/^[[:space:]]*//')"
-
 			printf '%s [%s] %s\n' "$short_id" "$state" "$title"
 			detail=""
 			test -n "$labels" && detail="${detail} labels:${labels}"

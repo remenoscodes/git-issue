@@ -272,10 +272,10 @@ $body"
 	commit="$(GIT_AUTHOR_NAME="$author_name" \
 		GIT_AUTHOR_EMAIL="$author_email" \
 		GIT_AUTHOR_DATE="$created_at" \
-		git commit-tree "$empty_tree" < "$tmpfile")"
+		git commit-tree -- "$empty_tree" < "$tmpfile")"
 
 	# Create the ref
-	git update-ref "refs/issues/$uuid" "$commit"
+	git update-ref -- "refs/issues/$uuid" "$commit"
 
 	# Fetch and import comments
 	comments_json="$(gh api --paginate "/repos/$gh_owner/$gh_reponame/issues/$number/comments?per_page=100" 2>/dev/null || echo '[]')"
@@ -314,7 +314,7 @@ $body"
 		new_commit="$(GIT_AUTHOR_NAME="$comment_name" \
 			GIT_AUTHOR_EMAIL="$comment_email" \
 			GIT_AUTHOR_DATE="$comment_date" \
-			git commit-tree "$empty_tree" -p "$parent" < "$tmpfile")"
+			git commit-tree -p "$parent" -- "$empty_tree" < "$tmpfile")"
 
 		parent="$new_commit"
 		i=$((i + 1))
@@ -330,7 +330,7 @@ $body"
 		new_commit="$(GIT_AUTHOR_NAME="$author_name" \
 			GIT_AUTHOR_EMAIL="$author_email" \
 			GIT_AUTHOR_DATE="$closed_at" \
-			git commit-tree "$empty_tree" -p "$parent" < "$tmpfile")"
+			git commit-tree -p "$parent" -- "$empty_tree" < "$tmpfile")"
 
 		parent="$new_commit"
 	fi
@@ -338,7 +338,7 @@ $body"
 	# Update ref to final commit in chain
 	if test "$parent" != "$commit"
 	then
-		git update-ref "refs/issues/$uuid" "$parent" "$commit"
+		git update-ref -- "refs/issues/$uuid" "$parent" "$commit"
 	fi
 
 	imported=$((imported + 1))

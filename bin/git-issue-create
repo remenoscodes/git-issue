@@ -176,9 +176,9 @@ git interpret-trailers --in-place --trailer "Format-Version: 1" "$tmpfile"
 empty_tree="$(git hash-object -t tree /dev/null)"
 
 # Create the commit object (orphan -- no parent)
-commit="$(git commit-tree "$empty_tree" < "$tmpfile")"
+commit="$(git commit-tree -- "$empty_tree" < "$tmpfile")"
 
 # Create the ref
-git update-ref "refs/issues/$uuid" "$commit"
+git update-ref -- "refs/issues/$uuid" "$commit"
 
 printf 'Created issue %s\n' "$short_id"

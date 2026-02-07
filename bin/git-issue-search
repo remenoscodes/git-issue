@@ -1,0 +1,130 @@
+#!/bin/sh
+#
+# git-issue-search - Search issues by text pattern
+#
+
+set -e
+
+. "$(dirname "$0")/git-issue-lib"
+
+usage() {
+	cat <<EOF
+usage: git issue search <pattern> [options]
+
+Search issue titles, bodies, and comments for a text pattern.
+
+Options:
+   -s, --state <state>   Filter by state (open, closed, all) [default: all]
+   -i, --ignore-case     Case-insensitive search
+   -h, --help            Show this help
+
+The pattern is matched as a fixed string (not regex) by default.
+EOF
+	exit 1
+}
+
+pattern=""
+filter_state="all"
+ignore_case=0
+
+while test $# -gt 0
+do
+	case "$1" in
+		-s|--state)
+			test $# -ge 2 || { echo "error: -s requires a value" >&2; exit 1; }
+			filter_state="$2"
+			shift 2
+			;;
+		-i|--ignore-case)
+			ignore_case=1
+			shift
+			;;
+		-h|--help)
+			usage
+			;;
+		--)
+			shift
+			break
+			;;
+		-*)
+			echo "error: unknown option '$1'" >&2
+			usage
+			;;
+		*)
+			if test -z "$pattern"
+			then
+				pattern="$1"
+			fi
+			shift
+			;;
+	esac
+done
+
+if test -z "$pattern"
+then
+	echo "error: search pattern is required" >&2
+	usage
+fi
+
+# Verify we are inside a git repository
+git rev-parse --git-dir >/dev/null 2>&1 || {
+	echo "fatal: not a git repository" >&2
+	exit 128
+}
+
+# Check if any issues exist
+if ! git for-each-ref --count=1 refs/issues/ >/dev/null 2>&1 ||
+   test -z "$(git for-each-ref --count=1 --format='x' refs/issues/)"
+then
+	printf 'No issues found.\n'
+	exit 0
+fi
+
+# Build grep flags
+grep_flags="-F"
+if test "$ignore_case" -eq 1
+then
+	grep_flags="$grep_flags -i"
+fi
+
+found=0
+
+git for-each-ref --format='%(refname)' refs/issues/ | while IFS= read -r ref
+do
+	uuid="${ref#refs/issues/}"
+	short_id="$(printf '%s' "$uuid" | cut -c1-7)"
+
+	# Get title and state
+	title="$(get_issue_title "$ref")"
+
+	state="$(git log --format='%(trailers:key=State,valueonly)' "$ref" | \
+		sed '/^$/d' | head -1)"
+	test -n "$state" || state="open"
+	state="$(printf '%s' "$state" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+
+	# Apply state filter
+	if test "$filter_state" != "all" && test "$state" != "$filter_state"
+	then
+		continue
+	fi
+
+	# Collect all text from the issue chain for searching
+	# This includes subjects and bodies of all commits
+	all_text="$(git log --format='%s%n%b' "$ref")"
+
+	# Check for match
+	if printf '%s\n' "$all_text" | grep $grep_flags -q "$pattern"
+	then
+		printf '%s [%s] %s\n' "$short_id" "$state" "$title"
+
+		# Show matching lines with context
+		printf '%s\n' "$all_text" | grep $grep_flags -n "$pattern" | head -5 | while IFS= read -r match
+		do
+			printf '       %s\n' "$match"
+		done
+
+		found=$((found + 1))
+	fi
+done
+
+# Note: 'found' counter is in subshell due to pipe, can't access outside

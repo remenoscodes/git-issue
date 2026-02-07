@@ -205,10 +205,10 @@ fi
 empty_tree="$(git hash-object -t tree /dev/null)"
 
 # Create the commit with the current HEAD as parent
-commit="$(git commit-tree "$empty_tree" -p "$issue_head" < "$tmpfile")"
+commit="$(git commit-tree -p "$issue_head" -- "$empty_tree" < "$tmpfile")"
 
 # Update the ref
-git update-ref "$issue_ref" "$commit" "$issue_head"
+git update-ref -- "$issue_ref" "$commit" "$issue_head"
 
 case "$new_state" in
 	open)   printf 'Reopened issue %s\n' "$short_id" ;;
