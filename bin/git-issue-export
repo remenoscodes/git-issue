@@ -93,7 +93,8 @@ gh auth status >/dev/null 2>&1 || {
 }
 
 tmpfile="$(mktemp)"
-trap 'rm -f "$tmpfile"' EXIT
+refs_file="$(mktemp)"
+trap 'rm -f "$tmpfile" "$refs_file"' EXIT
 
 # Get the empty tree SHA
 empty_tree="$(git hash-object -t tree /dev/null)"
@@ -104,7 +105,10 @@ synced=0
 
 target_prefix="github:$gh_owner/$gh_reponame#"
 
-git for-each-ref --format='%(refname)' refs/issues/ | while IFS= read -r ref
+# Write refs to file to avoid subshell pipeline (counters would be lost)
+git for-each-ref --format='%(refname)' refs/issues/ > "$refs_file"
+
+while IFS= read -r ref
 do
 	uuid="${ref#refs/issues/}"
 	short_id="$(printf '%s' "$uuid" | cut -c1-7)"
@@ -140,7 +144,7 @@ do
 				if test "$dry_run" -eq 1
 				then
 					printf '[dry-run] Would sync %s (already exported as #%s)\n' "$short_id" "$issue_number"
-					# Cannot increment synced in subshell, handled by summary
+					synced=$((synced + 1))
 					continue
 				fi
 
@@ -154,11 +158,13 @@ do
 				gh api --method PATCH "/repos/$gh_owner/$gh_reponame/issues/$issue_number" \
 					-f state="$gh_state" >/dev/null 2>&1 || true
 
+				synced=$((synced + 1))
 				printf 'Synced %s with #%s\n' "$short_id" "$issue_number"
 				continue
 				;;
 			*)
 				# Foreign Provider-ID (imported from a different repo), skip
+				skipped=$((skipped + 1))
 				printf 'Skipped %s (imported from %s)\n' "$short_id" "$existing_pid"
 				continue
 				;;
@@ -169,6 +175,7 @@ do
 	if test "$dry_run" -eq 1
 	then
 		printf '[dry-run] Would export %s: %s\n' "$short_id" "$title"
+		exported=$((exported + 1))
 		continue
 	fi
 
@@ -191,30 +198,30 @@ do
 	issue_number="$(printf '%s' "$create_response" | jq -r '.number')"
 	provider_id="github:$gh_owner/$gh_reponame#$issue_number"
 
-	# Export comments (skip root, skip state-change-only commits)
+	# Export comments (skip root, skip commits with trailers = metadata changes)
 	issue_head="$(git rev-parse "$ref")"
 	commits="$(git rev-list --reverse "$root..$ref")"
 	for cmt in $commits
 	do
-		cmt_body="$(git log -1 --format='%s' "$cmt")"
-		cmt_full="$(git log -1 --format='%b' "$cmt" | sed '/^[A-Z][A-Za-z-]*: /d' | sed '/^$/d')"
+		# Skip commits that have any trailers (state changes, edits, provider-id records)
+		cmt_trailers="$(git log -1 --format='%(trailers)' "$cmt" | sed '/^$/d')"
+		if test -n "$cmt_trailers"
+		then
+			continue
+		fi
 
-		# Skip state-change-only commits (no meaningful comment)
-		case "$cmt_body" in
-			"Close issue"|"Reopen issue"|"Change state to "*)
-				;;
-			*)
-				comment_text="$cmt_body"
-				if test -n "$cmt_full"
-				then
-					comment_text="$comment_text
+		cmt_body="$(git log -1 --format='%s' "$cmt")"
+		cmt_full="$(git log -1 --format='%b' "$cmt" | sed '/^$/d')"
+
+		comment_text="$cmt_body"
+		if test -n "$cmt_full"
+		then
+			comment_text="$comment_text
 
 $cmt_full"
-				fi
-				gh api --method POST "/repos/$gh_owner/$gh_reponame/issues/$issue_number/comments" \
-					-f body="$comment_text" >/dev/null 2>&1 || true
-				;;
-		esac
+		fi
+		gh api --method POST "/repos/$gh_owner/$gh_reponame/issues/$issue_number/comments" \
+			-f body="$comment_text" >/dev/null 2>&1 || true
 	done
 
 	# Sync state if closed
@@ -231,7 +238,8 @@ $cmt_full"
 	new_commit="$(git commit-tree "$empty_tree" -p "$issue_head" < "$tmpfile")"
 	git update-ref "$ref" "$new_commit" "$issue_head"
 
+	exported=$((exported + 1))
 	printf 'Exported %s as #%s: %s\n' "$short_id" "$issue_number" "$title"
-done
+done < "$refs_file"
 
-# Note: counts from subshell not available here, summary printed per-issue above
+printf 'Exported %d issues (%d skipped, %d synced)\n' "$exported" "$skipped" "$synced"

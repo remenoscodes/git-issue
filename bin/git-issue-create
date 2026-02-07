@@ -5,6 +5,8 @@
 
 set -e
 
+. "$(dirname "$0")/git-issue-lib"
+
 usage() {
 	cat <<EOF
 usage: git issue create [options] <title>
@@ -18,17 +20,6 @@ Options:
    -h, --help              Show this help
 EOF
 	exit 1
-}
-
-# Validate that a string contains no newlines
-validate_no_newlines() {
-	case "$1" in
-		*"
-"*)
-			echo "error: $2 must not contain newlines" >&2
-			exit 1
-			;;
-	esac
 }
 
 title=""

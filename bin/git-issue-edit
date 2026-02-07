@@ -5,6 +5,8 @@
 
 set -e
 
+. "$(dirname "$0")/git-issue-lib"
+
 usage() {
 	cat <<EOF
 usage: git issue edit <issue-id> [options]
@@ -21,31 +23,6 @@ Options:
    -h, --help              Show this help
 EOF
 	exit 1
-}
-
-# Validate that a string contains no newlines
-validate_no_newlines() {
-	case "$1" in
-		*"
-"*)
-			echo "error: $2 must not contain newlines" >&2
-			exit 1
-			;;
-	esac
-}
-
-# Resolve a short issue ID to a full ref
-resolve_issue() {
-	prefix="$1"
-	git for-each-ref --format='%(refname)' refs/issues/ | while IFS= read -r ref
-	do
-		uuid="${ref#refs/issues/}"
-		case "$uuid" in
-			"$prefix"*)
-				printf '%s\n' "$ref"
-				;;
-		esac
-	done
 }
 
 issue_prefix=""
@@ -233,20 +210,43 @@ then
 		fi
 	fi
 
-	# Remove labels
+	# Remove labels using exact string matching (not regex)
 	if test -n "$remove_labels"
 	then
 		old_ifs="$IFS"
 		IFS=','
 		for rl in $remove_labels
 		do
-			rl="$(printf '%s' "$rl" | sed 's/^[[:space:]]*//')"
-			# Remove from comma-separated list
-			final_labels="$(printf '%s' "$final_labels" | sed "s/, *$rl//g;s/$rl, *//g;s/^$rl$//g")"
+			rl="$(printf '%s' "$rl" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+			# Rebuild label list excluding exact match
+			new_labels=""
+			remaining="$final_labels"
+			while test -n "$remaining"
+			do
+				case "$remaining" in
+					*,*)
+						label="${remaining%%,*}"
+						remaining="${remaining#*,}"
+						;;
+					*)
+						label="$remaining"
+						remaining=""
+						;;
+				esac
+				label="$(printf '%s' "$label" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+				if test -n "$label" && test "$label" != "$rl"
+				then
+					if test -n "$new_labels"
+					then
+						new_labels="$new_labels, $label"
+					else
+						new_labels="$label"
+					fi
+				fi
+			done
+			final_labels="$new_labels"
 		done
 		IFS="$old_ifs"
-		# Clean up trailing/leading commas and spaces
-		final_labels="$(printf '%s' "$final_labels" | sed 's/^[, ]*//;s/[, ]*$//')"
 	fi
 
 	set_labels="$final_labels"

@@ -5,6 +5,8 @@
 
 set -e
 
+. "$(dirname "$0")/git-issue-lib"
+
 usage() {
 	cat <<EOF
 usage: git issue show <issue-id>
@@ -15,23 +17,6 @@ Show details of an issue and its comments.
    -h, --help    Show this help
 EOF
 	exit 1
-}
-
-# Resolve a short issue ID to a full ref
-resolve_issue() {
-	prefix="$1"
-	matches=""
-	count=0
-
-	git for-each-ref --format='%(refname)' refs/issues/ | while IFS= read -r ref
-	do
-		uuid="${ref#refs/issues/}"
-		case "$uuid" in
-			"$prefix"*)
-				printf '%s\n' "$ref"
-				;;
-		esac
-	done
 }
 
 if test $# -lt 1
@@ -83,8 +68,8 @@ short_id="$(printf '%s' "$uuid" | cut -c1-7)"
 # Get root commit
 root="$(git rev-list --max-parents=0 "$issue_ref")"
 
-# Get title and description from root commit
-title="$(git log -1 --format='%s' "$root")"
+# Get title (respects Title: trailer override)
+title="$(get_issue_title "$issue_ref")"
 # Get the body text, stripping trailer lines
 description="$(git log -1 --format='%b' "$root" | \
 	sed '/^[A-Z][A-Za-z-]*: /d' | \

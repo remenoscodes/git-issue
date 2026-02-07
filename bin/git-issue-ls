@@ -5,6 +5,8 @@
 
 set -e
 
+. "$(dirname "$0")/git-issue-lib"
+
 usage() {
 	cat <<EOF
 usage: git issue ls [options]
@@ -94,11 +96,8 @@ do
 	uuid="${ref#refs/issues/}"
 	short_id="$(printf '%s' "$uuid" | cut -c1-7)"
 
-	# Get root commit (the one with no parents)
-	root="$(git rev-list --max-parents=0 "$ref" 2>/dev/null)" || continue
-
-	# Get title from root commit subject line
-	title="$(git log -1 --format='%s' "$root")"
+	# Get title (respects Title: trailer override)
+	title="$(get_issue_title "$ref")" || continue
 
 	# Get current state: walk from HEAD, find first State: trailer
 	state="$(git log --format='%(trailers:key=State,valueonly)' "$ref" | \

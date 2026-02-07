@@ -225,7 +225,7 @@ the deliverable that makes ecosystem adoption possible.
 make test
 ```
 
-87 tests: 55 core + 32 bridge.
+112 tests: 76 core + 36 bridge.
 
 ## License
 

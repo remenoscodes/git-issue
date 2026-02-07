@@ -766,6 +766,25 @@ esac
 # ============================================================
 
 # ============================================================
+# TEST: export prints summary with correct counts
+# ============================================================
+run_test
+setup_repo
+create_mock_gh
+chmod +x "$TEST_DIR/mock-bin/gh"
+git issue create "Count test 1" >/dev/null
+git issue create "Count test 2" >/dev/null
+output="$(git issue export github:testowner/testrepo 2>&1)"
+case "$output" in
+	*"Exported 2 issues (0 skipped, 0 synced)"*)
+		pass "export prints summary with correct counts"
+		;;
+	*)
+		fail "export prints summary with correct counts" "output: $output"
+		;;
+esac
+
+# ============================================================
 # TEST: sync runs import then export
 # ============================================================
 run_test

@@ -1176,17 +1176,100 @@ else
 fi
 
 # ============================================================
-# TEST: version shows 0.2.0
+# TEST: --remove-label does not corrupt substring labels
+# ============================================================
+run_test
+setup_repo
+out="$(git issue create "Substring label test" -l bug -l debugger -l feature 2>&1)"
+id="$(printf '%s' "$out" | sed 's/Created issue //')"
+git issue edit "$id" --remove-label bug >/dev/null
+ref="$(git for-each-ref --format='%(refname)' refs/issues/ | head -1)"
+labels="$(git log --format='%(trailers:key=Labels,valueonly)' "$ref" | sed '/^$/d' | head -1)"
+labels="$(printf '%s' "$labels" | sed 's/^[[:space:]]*//')"
+if test "$labels" = "debugger, feature"
+then
+	pass "--remove-label does not corrupt substring labels"
+else
+	fail "--remove-label does not corrupt substring labels" "got: '$labels'"
+fi
+
+# ============================================================
+# TEST: --remove-label handles regex metacharacters
+# ============================================================
+run_test
+setup_repo
+out="$(git issue create "Regex label test" -l "C++" -l bug -l "bug.fix" 2>&1)"
+id="$(printf '%s' "$out" | sed 's/Created issue //')"
+git issue edit "$id" --remove-label "C++" >/dev/null
+ref="$(git for-each-ref --format='%(refname)' refs/issues/ | head -1)"
+labels="$(git log --format='%(trailers:key=Labels,valueonly)' "$ref" | sed '/^$/d' | head -1)"
+labels="$(printf '%s' "$labels" | sed 's/^[[:space:]]*//')"
+if test "$labels" = "bug, bug.fix"
+then
+	pass "--remove-label handles regex metacharacters (C++)"
+else
+	fail "--remove-label handles regex metacharacters (C++)" "got: '$labels'"
+fi
+
+# ============================================================
+# TEST: Title: trailer respected by ls
+# ============================================================
+run_test
+setup_repo
+out="$(git issue create "Original ls title" 2>&1)"
+id="$(printf '%s' "$out" | sed 's/Created issue //')"
+git issue edit "$id" -t "Updated ls title" >/dev/null
+output="$(git issue ls)"
+case "$output" in
+	*"Updated ls title"*)
+		pass "ls respects Title: trailer"
+		;;
+	*)
+		fail "ls respects Title: trailer" "got: $output"
+		;;
+esac
+
+# ============================================================
+# TEST: Title: trailer respected by show
+# ============================================================
+run_test
+output="$(git issue show "$id")"
+case "$output" in
+	*"Updated ls title"*)
+		pass "show respects Title: trailer"
+		;;
+	*)
+		fail "show respects Title: trailer" "got: $output"
+		;;
+esac
+
+# ============================================================
+# TEST: comment rejects trailer injection
+# ============================================================
+run_test
+setup_repo
+out="$(git issue create "Injection test" 2>&1)"
+id="$(printf '%s' "$out" | sed 's/Created issue //')"
+nl="$(printf 'legit comment\nState: closed')"
+if git issue comment "$id" -m "$nl" 2>/dev/null
+then
+	fail "comment rejects trailer injection" "should have failed"
+else
+	pass "comment rejects trailer injection"
+fi
+
+# ============================================================
+# TEST: version shows 0.3.0
 # ============================================================
 run_test
 setup_repo
 output="$(git issue version 2>&1)"
 case "$output" in
-	*"0.2.0"*)
-		pass "version shows 0.2.0"
+	*"0.3.0"*)
+		pass "version shows 0.3.0"
 		;;
 	*)
-		fail "version shows 0.2.0" "got: $output"
+		fail "version shows 0.3.0" "got: $output"
 		;;
 esac
 

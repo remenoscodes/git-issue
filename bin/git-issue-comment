@@ -5,6 +5,8 @@
 
 set -e
 
+. "$(dirname "$0")/git-issue-lib"
+
 usage() {
 	cat <<EOF
 usage: git issue comment <issue-id> -m <message>
@@ -14,20 +16,6 @@ Options:
    -h, --help             Show this help
 EOF
 	exit 1
-}
-
-# Resolve a short issue ID to a full ref
-resolve_issue() {
-	prefix="$1"
-	git for-each-ref --format='%(refname)' refs/issues/ | while IFS= read -r ref
-	do
-		uuid="${ref#refs/issues/}"
-		case "$uuid" in
-			"$prefix"*)
-				printf '%s\n' "$ref"
-				;;
-		esac
-	done
 }
 
 issue_prefix=""
@@ -94,7 +82,14 @@ fi
 case "$message" in
 	*"
 "*)
-		# Multi-line is OK for comments, but check for trailer injection
+		# Multi-line comments: reject lines that could be parsed as issue trailers
+		if printf '%s\n' "$message" | grep -qE '^(State|Labels|Assignee|Priority|Milestone|Title|Provider-ID|Format-Version|Fixed-By|Release|Reason|Conflict): '
+		then
+			echo "error: comment contains lines that resemble issue metadata trailers" >&2
+			echo "       (e.g., 'State: ...', 'Labels: ...', 'Priority: ...')" >&2
+			echo "       this could corrupt issue metadata when queried" >&2
+			exit 1
+		fi
 		;;
 esac
 

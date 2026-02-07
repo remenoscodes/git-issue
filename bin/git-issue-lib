@@ -1,0 +1,42 @@
+#!/bin/sh
+#
+# git-issue-lib - Shared functions for git-issue commands
+#
+# Source this file from git-issue commands:
+#   . "$(dirname "$0")/git-issue-lib"
+#
+
+# Resolve a short issue ID to full ref(s)
+# Uses git's own ref glob matching for O(1) lookup
+resolve_issue() {
+	_ri_prefix="$1"
+	git for-each-ref --format='%(refname)' "refs/issues/$_ri_prefix*"
+}
+
+# Validate that a string contains no newlines
+validate_no_newlines() {
+	case "$1" in
+		*"
+"*)
+			echo "error: $2 must not contain newlines" >&2
+			exit 1
+			;;
+	esac
+}
+
+# Get the effective title for an issue ref
+# Checks for Title: trailer override, falls back to root commit subject
+get_issue_title() {
+	_git_ref="$1"
+	_title_override="$(git log --format='%(trailers:key=Title,valueonly)' "$_git_ref" | \
+		sed '/^$/d' | head -1)"
+	_title_override="$(printf '%s' "$_title_override" | sed 's/^[[:space:]]*//')"
+
+	if test -n "$_title_override"
+	then
+		printf '%s' "$_title_override"
+	else
+		_root="$(git rev-list --max-parents=0 "$_git_ref")"
+		git log -1 --format='%s' "$_root"
+	fi
+}

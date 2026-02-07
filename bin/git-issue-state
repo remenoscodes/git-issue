@@ -5,6 +5,8 @@
 
 set -e
 
+. "$(dirname "$0")/git-issue-lib"
+
 usage() {
 	cat <<EOF
 usage: git issue state <issue-id> [options]
@@ -20,20 +22,6 @@ Options:
    -h, --help             Show this help
 EOF
 	exit 1
-}
-
-# Resolve a short issue ID to a full ref
-resolve_issue() {
-	prefix="$1"
-	git for-each-ref --format='%(refname)' refs/issues/ | while IFS= read -r ref
-	do
-		uuid="${ref#refs/issues/}"
-		case "$uuid" in
-			"$prefix"*)
-				printf '%s\n' "$ref"
-				;;
-		esac
-	done
 }
 
 issue_prefix=""
