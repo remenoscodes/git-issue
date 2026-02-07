@@ -762,6 +762,62 @@ case "$output" in
 esac
 
 # ============================================================
+# SYNC TESTS
+# ============================================================
+
+# ============================================================
+# TEST: sync runs import then export
+# ============================================================
+run_test
+setup_repo
+create_mock_gh
+chmod +x "$TEST_DIR/mock-bin/gh"
+output="$(git issue sync github:testowner/testrepo --state all 2>&1)"
+case "$output" in
+	*"Importing from"*"Exporting to"*)
+		pass "sync runs import then export"
+		;;
+	*)
+		fail "sync runs import then export" "output: $output"
+		;;
+esac
+
+# ============================================================
+# TEST: sync --dry-run passes through
+# ============================================================
+run_test
+setup_repo
+create_mock_gh
+chmod +x "$TEST_DIR/mock-bin/gh"
+output="$(git issue sync github:testowner/testrepo --state all --dry-run 2>&1)"
+ref_count="$(git for-each-ref --format='x' refs/issues/ | wc -l | tr -d ' ')"
+if test "$ref_count" -eq 0
+then
+	case "$output" in
+		*"dry-run"*)
+			pass "sync --dry-run passes through without changes"
+			;;
+		*)
+			fail "sync --dry-run passes through without changes" "output: $output"
+			;;
+	esac
+else
+	fail "sync --dry-run passes through without changes" "created $ref_count refs"
+fi
+
+# ============================================================
+# TEST: sync with invalid provider fails
+# ============================================================
+run_test
+setup_repo
+if git issue sync "badprovider" 2>/dev/null
+then
+	fail "sync with invalid provider fails" "should have failed"
+else
+	pass "sync with invalid provider fails"
+fi
+
+# ============================================================
 # SUMMARY
 # ============================================================
 printf "\n%.60s\n" "============================================================"

@@ -7,7 +7,7 @@
 
 set -e
 
-VERSION="0.1.0"
+VERSION="0.2.0"
 
 usage() {
 	cat <<EOF
@@ -18,9 +18,11 @@ Commands:
    ls       List issues
    show     Show issue details and comments
    comment  Add a comment to an issue
+   edit     Edit issue metadata (labels, assignee, priority, milestone)
    state    Change the state of an issue
    import   Import issues from an external provider
    export   Export issues to an external provider
+   sync     Two-way sync (import + export)
    init     Configure the current repo for issue tracking
    version  Print version information
 
@@ -33,7 +35,7 @@ EOF
 ISSUE_BIN_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 case "${1:-}" in
-	create|ls|show|comment|state|import|export|init)
+	create|ls|show|comment|edit|state|import|export|sync|init)
 		cmd="$1"
 		shift
 		exec "$ISSUE_BIN_DIR/git-issue-$cmd" "$@"

@@ -933,6 +933,264 @@ fi
 rm -rf "$tmpdir"
 
 # ============================================================
+# TEST: git issue edit changes labels
+# ============================================================
+run_test
+setup_repo
+out="$(git issue create "Edit labels test" -l bug 2>&1)"
+id="$(printf '%s' "$out" | sed 's/Created issue //')"
+git issue edit "$id" -l feature -l docs >/dev/null
+ref="$(git for-each-ref --format='%(refname)' refs/issues/ | head -1)"
+labels="$(git log --format='%(trailers:key=Labels,valueonly)' "$ref" | sed '/^$/d' | head -1)"
+labels="$(printf '%s' "$labels" | sed 's/^[[:space:]]*//')"
+if test "$labels" = "feature, docs"
+then
+	pass "edit replaces labels"
+else
+	fail "edit replaces labels" "got: '$labels'"
+fi
+
+# ============================================================
+# TEST: git issue edit --add-label adds to existing
+# ============================================================
+run_test
+setup_repo
+out="$(git issue create "Add label test" -l bug 2>&1)"
+id="$(printf '%s' "$out" | sed 's/Created issue //')"
+git issue edit "$id" --add-label security >/dev/null
+ref="$(git for-each-ref --format='%(refname)' refs/issues/ | head -1)"
+labels="$(git log --format='%(trailers:key=Labels,valueonly)' "$ref" | sed '/^$/d' | head -1)"
+labels="$(printf '%s' "$labels" | sed 's/^[[:space:]]*//')"
+if test "$labels" = "bug, security"
+then
+	pass "edit --add-label appends to existing labels"
+else
+	fail "edit --add-label appends to existing labels" "got: '$labels'"
+fi
+
+# ============================================================
+# TEST: git issue edit --remove-label removes from existing
+# ============================================================
+run_test
+setup_repo
+out="$(git issue create "Remove label test" -l bug -l docs -l feature 2>&1)"
+id="$(printf '%s' "$out" | sed 's/Created issue //')"
+git issue edit "$id" --remove-label docs >/dev/null
+ref="$(git for-each-ref --format='%(refname)' refs/issues/ | head -1)"
+labels="$(git log --format='%(trailers:key=Labels,valueonly)' "$ref" | sed '/^$/d' | head -1)"
+labels="$(printf '%s' "$labels" | sed 's/^[[:space:]]*//')"
+case "$labels" in
+	*"docs"*)
+		fail "edit --remove-label removes label" "got: '$labels'"
+		;;
+	*)
+		pass "edit --remove-label removes label"
+		;;
+esac
+
+# ============================================================
+# TEST: git issue edit changes assignee
+# ============================================================
+run_test
+setup_repo
+out="$(git issue create "Edit assignee test" -a alice@test.com 2>&1)"
+id="$(printf '%s' "$out" | sed 's/Created issue //')"
+git issue edit "$id" -a bob@test.com >/dev/null
+ref="$(git for-each-ref --format='%(refname)' refs/issues/ | head -1)"
+assignee="$(git log --format='%(trailers:key=Assignee,valueonly)' "$ref" | sed '/^$/d' | head -1)"
+assignee="$(printf '%s' "$assignee" | sed 's/^[[:space:]]*//')"
+if test "$assignee" = "bob@test.com"
+then
+	pass "edit changes assignee"
+else
+	fail "edit changes assignee" "got: '$assignee'"
+fi
+
+# ============================================================
+# TEST: git issue edit changes priority
+# ============================================================
+run_test
+setup_repo
+out="$(git issue create "Edit priority test" -p low 2>&1)"
+id="$(printf '%s' "$out" | sed 's/Created issue //')"
+git issue edit "$id" -p critical >/dev/null
+ref="$(git for-each-ref --format='%(refname)' refs/issues/ | head -1)"
+prio="$(git log --format='%(trailers:key=Priority,valueonly)' "$ref" | sed '/^$/d' | head -1)"
+prio="$(printf '%s' "$prio" | sed 's/^[[:space:]]*//')"
+if test "$prio" = "critical"
+then
+	pass "edit changes priority"
+else
+	fail "edit changes priority" "got: '$prio'"
+fi
+
+# ============================================================
+# TEST: git issue edit changes milestone
+# ============================================================
+run_test
+setup_repo
+out="$(git issue create "Edit milestone test" --milestone v1.0 2>&1)"
+id="$(printf '%s' "$out" | sed 's/Created issue //')"
+git issue edit "$id" --milestone v2.0 >/dev/null
+ref="$(git for-each-ref --format='%(refname)' refs/issues/ | head -1)"
+ms="$(git log --format='%(trailers:key=Milestone,valueonly)' "$ref" | sed '/^$/d' | head -1)"
+ms="$(printf '%s' "$ms" | sed 's/^[[:space:]]*//')"
+if test "$ms" = "v2.0"
+then
+	pass "edit changes milestone"
+else
+	fail "edit changes milestone" "got: '$ms'"
+fi
+
+# ============================================================
+# TEST: git issue edit changes title
+# ============================================================
+run_test
+setup_repo
+out="$(git issue create "Original title" 2>&1)"
+id="$(printf '%s' "$out" | sed 's/Created issue //')"
+git issue edit "$id" -t "New title" >/dev/null
+ref="$(git for-each-ref --format='%(refname)' refs/issues/ | head -1)"
+new_title="$(git log --format='%(trailers:key=Title,valueonly)' "$ref" | sed '/^$/d' | head -1)"
+new_title="$(printf '%s' "$new_title" | sed 's/^[[:space:]]*//')"
+if test "$new_title" = "New title"
+then
+	pass "edit changes title via Title: trailer"
+else
+	fail "edit changes title via Title: trailer" "got: '$new_title'"
+fi
+
+# ============================================================
+# TEST: git issue edit creates a child commit
+# ============================================================
+run_test
+setup_repo
+out="$(git issue create "Commit count test" 2>&1)"
+id="$(printf '%s' "$out" | sed 's/Created issue //')"
+git issue edit "$id" -p high >/dev/null
+ref="$(git for-each-ref --format='%(refname)' refs/issues/ | head -1)"
+total="$(git rev-list --count "$ref")"
+if test "$total" -eq 2
+then
+	pass "edit creates a child commit"
+else
+	fail "edit creates a child commit" "expected 2, got $total"
+fi
+
+# ============================================================
+# TEST: git issue edit rejects invalid priority
+# ============================================================
+run_test
+setup_repo
+out="$(git issue create "Bad prio edit" 2>&1)"
+id="$(printf '%s' "$out" | sed 's/Created issue //')"
+if git issue edit "$id" -p urgent 2>/dev/null
+then
+	fail "edit rejects invalid priority" "should have failed"
+else
+	pass "edit rejects invalid priority"
+fi
+
+# ============================================================
+# TEST: git issue edit requires at least one option
+# ============================================================
+run_test
+if git issue edit "$id" 2>/dev/null
+then
+	fail "edit requires at least one option" "should have failed"
+else
+	pass "edit requires at least one option"
+fi
+
+# ============================================================
+# TEST: git issue edit on nonexistent issue fails
+# ============================================================
+run_test
+setup_repo
+if git issue edit "zzzzzzz" -p low 2>/dev/null
+then
+	fail "edit on nonexistent issue fails" "should have failed"
+else
+	pass "edit on nonexistent issue fails"
+fi
+
+# ============================================================
+# TEST: git issue edit with custom message
+# ============================================================
+run_test
+setup_repo
+out="$(git issue create "Custom msg edit" 2>&1)"
+id="$(printf '%s' "$out" | sed 's/Created issue //')"
+git issue edit "$id" -p high -m "Escalating priority" >/dev/null
+ref="$(git for-each-ref --format='%(refname)' refs/issues/ | head -1)"
+subject="$(git log -1 --format='%s' "$ref")"
+if test "$subject" = "Escalating priority"
+then
+	pass "edit uses custom message as commit subject"
+else
+	fail "edit uses custom message as commit subject" "got: '$subject'"
+fi
+
+# ============================================================
+# TEST: ls --format full shows metadata
+# ============================================================
+run_test
+setup_repo
+git issue create "Format test" -l bug -a dev@test.com -p high --milestone v1.0 >/dev/null
+output="$(git issue ls --format full)"
+case "$output" in
+	*"Format test"*"labels:"*"bug"*"assignee:"*"dev@test.com"*)
+		pass "ls --format full shows metadata"
+		;;
+	*)
+		fail "ls --format full shows metadata" "got: $output"
+		;;
+esac
+
+# ============================================================
+# TEST: ls --format oneline has no brackets
+# ============================================================
+run_test
+output="$(git issue ls --format oneline)"
+case "$output" in
+	*"["*)
+		fail "ls --format oneline has no brackets" "got: $output"
+		;;
+	*" open "*"Format test"*)
+		pass "ls --format oneline has no brackets"
+		;;
+	*)
+		fail "ls --format oneline has no brackets" "got: $output"
+		;;
+esac
+
+# ============================================================
+# TEST: ls --format rejects invalid value
+# ============================================================
+run_test
+if git issue ls --format json 2>/dev/null
+then
+	fail "ls rejects invalid format" "should have failed"
+else
+	pass "ls rejects invalid format"
+fi
+
+# ============================================================
+# TEST: version shows 0.2.0
+# ============================================================
+run_test
+setup_repo
+output="$(git issue version 2>&1)"
+case "$output" in
+	*"0.2.0"*)
+		pass "version shows 0.2.0"
+		;;
+	*)
+		fail "version shows 0.2.0" "got: $output"
+		;;
+esac
+
+# ============================================================
 # SUMMARY
 # ============================================================
 printf "\n%.60s\n" "============================================================"

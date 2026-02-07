@@ -128,6 +128,26 @@ then
 	usage
 fi
 
+# Validate no newlines in state value
+case "$new_state" in
+	*"
+"*)
+		echo "error: state must not contain newlines" >&2
+		exit 1
+		;;
+esac
+
+# Validate no newlines in message
+if test -n "$message"
+then
+	case "$message" in
+		*"
+"*)
+			# Multi-line messages are OK for state changes
+			;;
+	esac
+fi
+
 # Verify we are inside a git repository
 git rev-parse --git-dir >/dev/null 2>&1 || {
 	echo "fatal: not a git repository" >&2

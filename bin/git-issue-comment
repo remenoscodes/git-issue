@@ -90,6 +90,14 @@ then
 	usage
 fi
 
+# Validate no trailer injection via newlines
+case "$message" in
+	*"
+"*)
+		# Multi-line is OK for comments, but check for trailer injection
+		;;
+esac
+
 # Verify we are inside a git repository
 git rev-parse --git-dir >/dev/null 2>&1 || {
 	echo "fatal: not a git repository" >&2

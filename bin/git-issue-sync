@@ -1,0 +1,70 @@
+#!/bin/sh
+#
+# git-issue-sync - Two-way sync with an external provider (import + export)
+#
+
+set -e
+
+usage() {
+	cat <<EOF
+usage: git issue sync github:<owner>/<repo> [options]
+
+Options:
+   --state <state>   Import filter: open, closed, all (default: open)
+   --dry-run         Show what would happen without making changes
+   -h, --help        Show this help
+EOF
+	exit 1
+}
+
+provider=""
+state_filter="open"
+dry_run=""
+
+while test $# -gt 0
+do
+	case "$1" in
+		--state)
+			test $# -ge 2 || { echo "error: --state requires a value" >&2; exit 1; }
+			state_filter="$2"
+			shift 2
+			;;
+		--dry-run)
+			dry_run="--dry-run"
+			shift
+			;;
+		-h|--help)
+			usage
+			;;
+		--)
+			shift
+			break
+			;;
+		-*)
+			echo "error: unknown option '$1'" >&2
+			usage
+			;;
+		*)
+			if test -z "$provider"
+			then
+				provider="$1"
+			fi
+			shift
+			;;
+	esac
+done
+
+if test -z "$provider"
+then
+	echo "error: provider is required (e.g., github:owner/repo)" >&2
+	usage
+fi
+
+# Find the directory containing the git-issue scripts
+ISSUE_BIN_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+printf '=== Importing from %s ===\n' "$provider"
+"$ISSUE_BIN_DIR/git-issue-import" "$provider" --state "$state_filter" $dry_run
+
+printf '\n=== Exporting to %s ===\n' "$provider"
+"$ISSUE_BIN_DIR/git-issue-export" "$provider" $dry_run

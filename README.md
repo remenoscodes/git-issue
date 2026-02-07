@@ -30,7 +30,6 @@ Created issue a7f3b2c
 $ git issue ls
 a7f3b2c [open]  Fix login crash with special characters
 b3e9d1a [open]  Add dark mode support
-c5f2a8e [closed] Update README with install instructions
 
 $ git issue comment a7f3b2c -m "Reproduced on Firefox 120 and Chrome 119"
 Added comment to a7f3b2c
@@ -44,6 +43,113 @@ Push issues to any remote. Fetch them back. They travel with the code:
 ```
 $ git push origin 'refs/issues/*'
 $ git fetch origin 'refs/issues/*:refs/issues/*'
+```
+
+## Install
+
+```sh
+git clone https://github.com/remenoscodes/git-issue.git
+cd git-issue
+
+# Option 1: Install to ~/.local/bin (no sudo)
+make install prefix=~/.local
+
+# Option 2: Install system-wide
+sudo make install
+
+# Option 3: Just add to PATH
+export PATH="$PATH:$(pwd)/bin"
+```
+
+Verify: `git issue version`
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `git issue create <title>` | Create a new issue |
+| `git issue ls` | List issues |
+| `git issue show <id>` | Show issue details and comments |
+| `git issue comment <id>` | Add a comment |
+| `git issue edit <id>` | Edit metadata (labels, assignee, priority, milestone) |
+| `git issue state <id>` | Change issue state |
+| `git issue import` | Import issues from GitHub |
+| `git issue export` | Export issues to GitHub |
+| `git issue sync` | Two-way sync (import + export) |
+| `git issue init` | Configure repo for issue tracking |
+
+### Creating Issues
+
+```sh
+git issue create "Fix login crash" \
+  -m "TypeError when clicking submit" \
+  -l bug -l auth \
+  -a alice@example.com \
+  -p critical \
+  --milestone v1.0
+```
+
+### Editing Issues
+
+```sh
+# Replace all labels
+git issue edit a7f3b2c -l bug -l urgent
+
+# Add/remove individual labels
+git issue edit a7f3b2c --add-label security
+git issue edit a7f3b2c --remove-label urgent
+
+# Change assignee and priority
+git issue edit a7f3b2c -a bob@example.com -p high
+
+# Change title
+git issue edit a7f3b2c -t "Fix login crash on special characters"
+```
+
+### Listing Issues
+
+```sh
+git issue ls                    # Open issues (default)
+git issue ls --all              # All issues
+git issue ls --state closed     # Closed issues
+git issue ls -l bug             # Filter by label
+git issue ls --format full      # Show labels, assignee, priority, milestone
+git issue ls --format oneline   # Scripting-friendly (no brackets)
+```
+
+### GitHub Bridge
+
+Import and export issues from/to GitHub. Requires [`gh`](https://cli.github.com/) and `jq`.
+
+```sh
+# Import all open issues from a GitHub repo
+git issue import github:owner/repo
+
+# Import all issues (open + closed)
+git issue import github:owner/repo --state all
+
+# Preview what would be imported
+git issue import github:owner/repo --dry-run
+
+# Export local issues to GitHub
+git issue export github:owner/repo
+
+# Two-way sync (import then export)
+git issue sync github:owner/repo --state all
+```
+
+**How it works:**
+
+- `import` fetches GitHub issues via `gh api`, creates local `refs/issues/` commits with full metadata (labels, assignee, milestone, comments, author)
+- `export` creates GitHub issues from local issues, exports comments, syncs state
+- A `Provider-ID` trailer tracks the mapping (e.g., `Provider-ID: github:owner/repo#42`) to prevent duplicates on re-import/re-export
+- Re-importing skips already-imported issues; re-exporting syncs state changes
+
+**Prerequisites:**
+
+```sh
+brew install gh jq       # macOS
+gh auth login            # authenticate with GitHub
 ```
 
 ## How It Works
@@ -75,29 +181,6 @@ git for-each-ref \
 
 Zero subprocess spawning. Works for 10,000+ issues.
 
-## Install
-
-```sh
-# Clone and add to PATH
-git clone https://github.com/remenoscodes/git-issue.git
-export PATH="$PATH:$(pwd)/git-issue/bin"
-
-# Or copy scripts to your git exec path
-cp git-issue/bin/git-issue-* $(git --exec-path)/
-```
-
-## Commands
-
-| Command | Description |
-|---------|-------------|
-| `git issue create <title>` | Create a new issue |
-| `git issue ls` | List issues |
-| `git issue show <id>` | Show issue details |
-| `git issue comment <id>` | Add a comment |
-| `git issue state <id>` | Change issue state |
-| `git issue import` | Import from GitHub/GitLab |
-| `git issue export` | Export to GitHub/GitLab |
-
 ## The Format Spec
 
 The real deliverable is [ISSUE-FORMAT.md](ISSUE-FORMAT.md) -- a
@@ -118,8 +201,6 @@ portability as natural as code portability.
 - **Last-writer-wins for state** -- deterministic, simple
 - **Import/export bridges** (not live sync) -- one hard problem at a time
 
-See the [full design rationale](doc/design-rationale.md) for details.
-
 ## Prior Art
 
 This project builds on lessons from 10+ previous attempts:
@@ -137,6 +218,14 @@ This project builds on lessons from 10+ previous attempts:
 produced a standalone, implementable specification. Every tool's
 "format" was just whatever their code produced. `ISSUE-FORMAT.md` is
 the deliverable that makes ecosystem adoption possible.
+
+## Running Tests
+
+```sh
+make test
+```
+
+87 tests: 55 core + 32 bridge.
 
 ## License
 

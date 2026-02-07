@@ -1,0 +1,330 @@
+#!/bin/sh
+#
+# git-issue-edit - Edit metadata of an existing issue
+#
+
+set -e
+
+usage() {
+	cat <<EOF
+usage: git issue edit <issue-id> [options]
+
+Options:
+   -t, --title <text>      Change the issue title
+   -l, --label <label>     Set labels (can be repeated; replaces all labels)
+   --add-label <label>     Add a label to existing labels
+   --remove-label <label>  Remove a label from existing labels
+   -a, --assignee <email>  Change assignee
+   -p, --priority <level>  Change priority (low, medium, high, critical)
+   --milestone <name>      Change milestone
+   -m, --message <text>    Custom commit message for the edit
+   -h, --help              Show this help
+EOF
+	exit 1
+}
+
+# Validate that a string contains no newlines
+validate_no_newlines() {
+	case "$1" in
+		*"
+"*)
+			echo "error: $2 must not contain newlines" >&2
+			exit 1
+			;;
+	esac
+}
+
+# Resolve a short issue ID to a full ref
+resolve_issue() {
+	prefix="$1"
+	git for-each-ref --format='%(refname)' refs/issues/ | while IFS= read -r ref
+	do
+		uuid="${ref#refs/issues/}"
+		case "$uuid" in
+			"$prefix"*)
+				printf '%s\n' "$ref"
+				;;
+		esac
+	done
+}
+
+issue_prefix=""
+new_title=""
+set_labels=""
+add_labels=""
+remove_labels=""
+assignee=""
+priority=""
+milestone=""
+message=""
+has_label_set=0
+
+# Parse the issue ID first
+if test $# -gt 0
+then
+	case "$1" in
+		-h|--help)
+			usage
+			;;
+		-*)
+			;;
+		*)
+			issue_prefix="$1"
+			shift
+			;;
+	esac
+fi
+
+while test $# -gt 0
+do
+	case "$1" in
+		-t|--title)
+			test $# -ge 2 || { echo "error: -t requires a value" >&2; exit 1; }
+			validate_no_newlines "$2" "title"
+			new_title="$2"
+			shift 2
+			;;
+		-l|--label)
+			test $# -ge 2 || { echo "error: -l requires a value" >&2; exit 1; }
+			validate_no_newlines "$2" "label"
+			has_label_set=1
+			if test -n "$set_labels"
+			then
+				set_labels="$set_labels, $2"
+			else
+				set_labels="$2"
+			fi
+			shift 2
+			;;
+		--add-label)
+			test $# -ge 2 || { echo "error: --add-label requires a value" >&2; exit 1; }
+			validate_no_newlines "$2" "label"
+			if test -n "$add_labels"
+			then
+				add_labels="$add_labels, $2"
+			else
+				add_labels="$2"
+			fi
+			shift 2
+			;;
+		--remove-label)
+			test $# -ge 2 || { echo "error: --remove-label requires a value" >&2; exit 1; }
+			validate_no_newlines "$2" "label"
+			if test -n "$remove_labels"
+			then
+				remove_labels="$remove_labels,$2"
+			else
+				remove_labels="$2"
+			fi
+			shift 2
+			;;
+		-a|--assignee)
+			test $# -ge 2 || { echo "error: -a requires a value" >&2; exit 1; }
+			validate_no_newlines "$2" "assignee"
+			assignee="$2"
+			shift 2
+			;;
+		-p|--priority)
+			test $# -ge 2 || { echo "error: -p requires a value" >&2; exit 1; }
+			case "$2" in
+				low|medium|high|critical) ;;
+				*)
+					echo "error: priority must be low, medium, high, or critical" >&2
+					exit 1
+					;;
+			esac
+			priority="$2"
+			shift 2
+			;;
+		--milestone)
+			test $# -ge 2 || { echo "error: --milestone requires a value" >&2; exit 1; }
+			validate_no_newlines "$2" "milestone"
+			milestone="$2"
+			shift 2
+			;;
+		-m|--message)
+			test $# -ge 2 || { echo "error: -m requires a value" >&2; exit 1; }
+			message="$2"
+			shift 2
+			;;
+		-h|--help)
+			usage
+			;;
+		--)
+			shift
+			break
+			;;
+		-*)
+			echo "error: unknown option '$1'" >&2
+			usage
+			;;
+		*)
+			if test -z "$issue_prefix"
+			then
+				issue_prefix="$1"
+			fi
+			shift
+			;;
+	esac
+done
+
+if test -z "$issue_prefix"
+then
+	echo "error: issue ID is required" >&2
+	usage
+fi
+
+# Check that at least one edit was specified
+if test -z "$new_title" && test "$has_label_set" -eq 0 && \
+   test -z "$add_labels" && test -z "$remove_labels" && \
+   test -z "$assignee" && test -z "$priority" && test -z "$milestone"
+then
+	echo "error: at least one edit option is required" >&2
+	usage
+fi
+
+# Verify we are inside a git repository
+git rev-parse --git-dir >/dev/null 2>&1 || {
+	echo "fatal: not a git repository" >&2
+	exit 128
+}
+
+# Resolve the issue ID
+matches="$(resolve_issue "$issue_prefix")"
+count="$(printf '%s\n' "$matches" | grep -c . || true)"
+
+if test "$count" -eq 0
+then
+	echo "error: issue '$issue_prefix' not found" >&2
+	exit 1
+fi
+
+if test "$count" -gt 1
+then
+	echo "error: ambiguous issue prefix '$issue_prefix'" >&2
+	exit 1
+fi
+
+issue_ref="$matches"
+uuid="${issue_ref#refs/issues/}"
+short_id="$(printf '%s' "$uuid" | cut -c1-7)"
+
+# Get current issue HEAD
+issue_head="$(git rev-parse "$issue_ref")"
+
+# Compute final labels if using --add-label or --remove-label
+if test -n "$add_labels" || test -n "$remove_labels"
+then
+	# Get current labels
+	current_labels="$(git log --format='%(trailers:key=Labels,valueonly)' "$issue_ref" | \
+		sed '/^$/d' | head -1)"
+	current_labels="$(printf '%s' "$current_labels" | sed 's/^[[:space:]]*//')"
+
+	final_labels="$current_labels"
+
+	# Add new labels
+	if test -n "$add_labels"
+	then
+		if test -n "$final_labels"
+		then
+			final_labels="$final_labels, $add_labels"
+		else
+			final_labels="$add_labels"
+		fi
+	fi
+
+	# Remove labels
+	if test -n "$remove_labels"
+	then
+		old_ifs="$IFS"
+		IFS=','
+		for rl in $remove_labels
+		do
+			rl="$(printf '%s' "$rl" | sed 's/^[[:space:]]*//')"
+			# Remove from comma-separated list
+			final_labels="$(printf '%s' "$final_labels" | sed "s/, *$rl//g;s/$rl, *//g;s/^$rl$//g")"
+		done
+		IFS="$old_ifs"
+		# Clean up trailing/leading commas and spaces
+		final_labels="$(printf '%s' "$final_labels" | sed 's/^[, ]*//;s/[, ]*$//')"
+	fi
+
+	set_labels="$final_labels"
+	has_label_set=1
+fi
+
+# Build commit message
+changes=""
+if test -n "$new_title"
+then
+	changes="${changes}title"
+fi
+if test "$has_label_set" -eq 1
+then
+	test -n "$changes" && changes="$changes, "
+	changes="${changes}labels"
+fi
+if test -n "$assignee"
+then
+	test -n "$changes" && changes="$changes, "
+	changes="${changes}assignee"
+fi
+if test -n "$priority"
+then
+	test -n "$changes" && changes="$changes, "
+	changes="${changes}priority"
+fi
+if test -n "$milestone"
+then
+	test -n "$changes" && changes="$changes, "
+	changes="${changes}milestone"
+fi
+
+if test -n "$message"
+then
+	subject="$message"
+else
+	subject="Update $changes"
+fi
+
+# Write message to temp file and add trailers
+tmpfile="$(mktemp)"
+trap 'rm -f "$tmpfile"' EXIT
+
+printf '%s\n' "$subject" > "$tmpfile"
+
+if test -n "$new_title"
+then
+	git interpret-trailers --in-place --trailer "Title: $new_title" "$tmpfile"
+fi
+
+if test "$has_label_set" -eq 1
+then
+	git interpret-trailers --in-place --trailer "Labels: $set_labels" "$tmpfile"
+fi
+
+if test -n "$assignee"
+then
+	git interpret-trailers --in-place --trailer "Assignee: $assignee" "$tmpfile"
+fi
+
+if test -n "$priority"
+then
+	git interpret-trailers --in-place --trailer "Priority: $priority" "$tmpfile"
+fi
+
+if test -n "$milestone"
+then
+	git interpret-trailers --in-place --trailer "Milestone: $milestone" "$tmpfile"
+fi
+
+# Get the empty tree SHA
+empty_tree="$(git hash-object -t tree /dev/null)"
+
+# Create the commit with the current HEAD as parent
+commit="$(git commit-tree "$empty_tree" -p "$issue_head" < "$tmpfile")"
+
+# Update the ref
+git update-ref "$issue_ref" "$commit" "$issue_head"
+
+printf 'Updated %s (%s)\n' "$short_id" "$changes"

@@ -10,16 +10,23 @@ usage() {
 usage: git issue ls [options]
 
 Options:
-   -s, --state <state>   Filter by state (open, closed, all) [default: open]
-   -l, --label <label>   Filter by label
-   -a, --all             Show all issues (same as --state all)
-   -h, --help            Show this help
+   -s, --state <state>     Filter by state (open, closed, all) [default: open]
+   -l, --label <label>     Filter by label
+   -a, --all               Show all issues (same as --state all)
+   -f, --format <format>   Output format: short (default), full, oneline
+   -h, --help              Show this help
+
+Formats:
+   short    <id> [<state>] <title>
+   full     <id> [<state>] <title> with labels, assignee, priority, milestone
+   oneline  <id> <state> <title> (no brackets, for scripting)
 EOF
 	exit 1
 }
 
 filter_state="open"
 filter_label=""
+output_format="short"
 
 while test $# -gt 0
 do
@@ -37,6 +44,15 @@ do
 		-a|--all)
 			filter_state="all"
 			shift
+			;;
+		-f|--format)
+			test $# -ge 2 || { echo "error: -f requires a value" >&2; exit 1; }
+			case "$2" in
+				short|full|oneline) ;;
+				*) echo "error: format must be short, full, or oneline" >&2; exit 1 ;;
+			esac
+			output_format="$2"
+			shift 2
 			;;
 		-h|--help)
 			usage
@@ -115,5 +131,35 @@ do
 		esac
 	fi
 
-	printf '%s [%s] %s\n' "$short_id" "$state" "$title"
+	case "$output_format" in
+		oneline)
+			printf '%s %s %s\n' "$short_id" "$state" "$title"
+			;;
+		full)
+			# Fetch extra metadata
+			labels="$(git log --format='%(trailers:key=Labels,valueonly)' "$ref" | \
+				sed '/^$/d' | head -1)"
+			labels="$(printf '%s' "$labels" | sed 's/^[[:space:]]*//')"
+			issue_assignee="$(git log --format='%(trailers:key=Assignee,valueonly)' "$ref" | \
+				sed '/^$/d' | head -1)"
+			issue_assignee="$(printf '%s' "$issue_assignee" | sed 's/^[[:space:]]*//')"
+			issue_priority="$(git log --format='%(trailers:key=Priority,valueonly)' "$ref" | \
+				sed '/^$/d' | head -1)"
+			issue_priority="$(printf '%s' "$issue_priority" | sed 's/^[[:space:]]*//')"
+			issue_milestone="$(git log --format='%(trailers:key=Milestone,valueonly)' "$ref" | \
+				sed '/^$/d' | head -1)"
+			issue_milestone="$(printf '%s' "$issue_milestone" | sed 's/^[[:space:]]*//')"
+
+			printf '%s [%s] %s\n' "$short_id" "$state" "$title"
+			detail=""
+			test -n "$labels" && detail="${detail} labels:${labels}"
+			test -n "$issue_assignee" && detail="${detail} assignee:${issue_assignee}"
+			test -n "$issue_priority" && detail="${detail} priority:${issue_priority}"
+			test -n "$issue_milestone" && detail="${detail} milestone:${issue_milestone}"
+			test -n "$detail" && printf '       %s\n' "$detail"
+			;;
+		*)
+			printf '%s [%s] %s\n' "$short_id" "$state" "$title"
+			;;
+	esac
 done
