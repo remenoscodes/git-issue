@@ -1,0 +1,136 @@
+#!/bin/sh
+#
+# git-issue-comment - Add a comment to an issue
+#
+
+set -e
+
+usage() {
+	cat <<EOF
+usage: git issue comment <issue-id> -m <message>
+
+Options:
+   -m, --message <text>   Comment text (required)
+   -h, --help             Show this help
+EOF
+	exit 1
+}
+
+# Resolve a short issue ID to a full ref
+resolve_issue() {
+	prefix="$1"
+	git for-each-ref --format='%(refname)' refs/issues/ | while IFS= read -r ref
+	do
+		uuid="${ref#refs/issues/}"
+		case "$uuid" in
+			"$prefix"*)
+				printf '%s\n' "$ref"
+				;;
+		esac
+	done
+}
+
+issue_prefix=""
+message=""
+
+# Parse the issue ID first (before options)
+if test $# -gt 0
+then
+	case "$1" in
+		-h|--help)
+			usage
+			;;
+		-*)
+			;;
+		*)
+			issue_prefix="$1"
+			shift
+			;;
+	esac
+fi
+
+while test $# -gt 0
+do
+	case "$1" in
+		-m|--message)
+			test $# -ge 2 || { echo "error: -m requires a value" >&2; exit 1; }
+			message="$2"
+			shift 2
+			;;
+		-h|--help)
+			usage
+			;;
+		--)
+			shift
+			break
+			;;
+		-*)
+			echo "error: unknown option '$1'" >&2
+			usage
+			;;
+		*)
+			if test -z "$issue_prefix"
+			then
+				issue_prefix="$1"
+			fi
+			shift
+			;;
+	esac
+done
+
+if test -z "$issue_prefix"
+then
+	echo "error: issue ID is required" >&2
+	usage
+fi
+
+if test -z "$message"
+then
+	echo "error: comment message is required (-m)" >&2
+	usage
+fi
+
+# Verify we are inside a git repository
+git rev-parse --git-dir >/dev/null 2>&1 || {
+	echo "fatal: not a git repository" >&2
+	exit 128
+}
+
+# Resolve the issue ID
+matches="$(resolve_issue "$issue_prefix")"
+count="$(printf '%s\n' "$matches" | grep -c . || true)"
+
+if test "$count" -eq 0
+then
+	echo "error: issue '$issue_prefix' not found" >&2
+	exit 1
+fi
+
+if test "$count" -gt 1
+then
+	echo "error: ambiguous issue prefix '$issue_prefix'" >&2
+	exit 1
+fi
+
+issue_ref="$matches"
+uuid="${issue_ref#refs/issues/}"
+short_id="$(printf '%s' "$uuid" | cut -c1-7)"
+
+# Get current issue HEAD
+issue_head="$(git rev-parse "$issue_ref")"
+
+# Get the empty tree SHA
+empty_tree="$(git hash-object -t tree /dev/null)"
+
+# Create the comment commit with the current HEAD as parent
+tmpfile="$(mktemp)"
+trap 'rm -f "$tmpfile"' EXIT
+
+printf '%s\n' "$message" > "$tmpfile"
+
+commit="$(git commit-tree "$empty_tree" -p "$issue_head" < "$tmpfile")"
+
+# Update the ref
+git update-ref "$issue_ref" "$commit" "$issue_head"
+
+printf 'Added comment to %s\n' "$short_id"

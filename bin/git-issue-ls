@@ -1,0 +1,119 @@
+#!/bin/sh
+#
+# git-issue-ls - List issues
+#
+
+set -e
+
+usage() {
+	cat <<EOF
+usage: git issue ls [options]
+
+Options:
+   -s, --state <state>   Filter by state (open, closed, all) [default: open]
+   -l, --label <label>   Filter by label
+   -a, --all             Show all issues (same as --state all)
+   -h, --help            Show this help
+EOF
+	exit 1
+}
+
+filter_state="open"
+filter_label=""
+
+while test $# -gt 0
+do
+	case "$1" in
+		-s|--state)
+			test $# -ge 2 || { echo "error: -s requires a value" >&2; exit 1; }
+			filter_state="$2"
+			shift 2
+			;;
+		-l|--label)
+			test $# -ge 2 || { echo "error: -l requires a value" >&2; exit 1; }
+			filter_label="$2"
+			shift 2
+			;;
+		-a|--all)
+			filter_state="all"
+			shift
+			;;
+		-h|--help)
+			usage
+			;;
+		*)
+			echo "error: unknown option '$1'" >&2
+			usage
+			;;
+	esac
+done
+
+# Verify we are inside a git repository
+git rev-parse --git-dir >/dev/null 2>&1 || {
+	echo "fatal: not a git repository" >&2
+	exit 128
+}
+
+# Check if any issues exist
+if ! git for-each-ref --count=1 refs/issues/ >/dev/null 2>&1 ||
+   test -z "$(git for-each-ref --count=1 --format='x' refs/issues/)"
+then
+	exit 0
+fi
+
+# For each issue ref, we need to get:
+# 1. The title (subject line of root commit)
+# 2. The current state (most recent State: trailer in the chain)
+#
+# The tip commit's subject gives us the LAST commit's subject, not the root.
+# We need the root commit's subject for the title.
+#
+# Strategy: Use for-each-ref to get ref names, then for each ref:
+# - Get root commit subject (title)
+# - Get current state from the chain
+
+git for-each-ref --format='%(refname)' refs/issues/ | while IFS= read -r ref
+do
+	# Extract short ID (first 7 chars of the UUID part)
+	uuid="${ref#refs/issues/}"
+	short_id="$(printf '%s' "$uuid" | cut -c1-7)"
+
+	# Get root commit (the one with no parents)
+	root="$(git rev-list --max-parents=0 "$ref" 2>/dev/null)" || continue
+
+	# Get title from root commit subject line
+	title="$(git log -1 --format='%s' "$root")"
+
+	# Get current state: walk from HEAD, find first State: trailer
+	state="$(git log --format='%(trailers:key=State,valueonly)' "$ref" | \
+		sed '/^$/d' | head -1)"
+
+	# Default to open if no state found
+	test -n "$state" || state="open"
+
+	# Strip whitespace from state
+	state="$(printf '%s' "$state" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+
+	# Apply state filter
+	if test "$filter_state" != "all" && test "$state" != "$filter_state"
+	then
+		continue
+	fi
+
+	# Apply label filter if specified
+	if test -n "$filter_label"
+	then
+		# Get labels from the most recent Labels: trailer
+		labels="$(git log --format='%(trailers:key=Labels,valueonly)' "$ref" | \
+			sed '/^$/d' | head -1)"
+		case ",$labels," in
+			*",$filter_label,"*|*", $filter_label,"*|*",$filter_label ,"*|*", $filter_label ,"*)
+				;;
+			*)
+				continue
+				;;
+		esac
+	fi
+
+	printf '%s [%s] %s\n' "$short_id" "$state" "$title"
+done

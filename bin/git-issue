@@ -1,0 +1,52 @@
+#!/bin/sh
+#
+# git-issue - Distributed issue tracking embedded in Git
+#
+# Usage: git issue <command> [<args>]
+#
+
+set -e
+
+VERSION="0.1.0"
+
+usage() {
+	cat <<EOF
+usage: git issue <command> [<args>]
+
+Commands:
+   create   Create a new issue
+   ls       List issues
+   show     Show issue details and comments
+   comment  Add a comment to an issue
+   state    Change the state of an issue
+   import   Import issues from an external provider
+   export   Export issues to an external provider
+   init     Configure the current repo for issue tracking
+   version  Print version information
+
+See 'git issue <command> --help' for more information on a specific command.
+EOF
+	exit 1
+}
+
+# Find the directory containing the git-issue scripts
+ISSUE_BIN_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+case "${1:-}" in
+	create|ls|show|comment|state|import|export|init)
+		cmd="$1"
+		shift
+		exec "$ISSUE_BIN_DIR/git-issue-$cmd" "$@"
+		;;
+	version|--version|-v)
+		echo "git-issue version $VERSION"
+		exit 0
+		;;
+	-h|--help|"")
+		usage
+		;;
+	*)
+		echo "git-issue: '$1' is not a git-issue command. See 'git issue --help'." >&2
+		exit 1
+		;;
+esac

@@ -1,0 +1,48 @@
+#!/bin/sh
+#
+# git-issue-init - Configure the current repo for issue tracking
+#
+
+set -e
+
+usage() {
+	cat <<EOF
+usage: git issue init
+
+Configure the current repository for git-issue tracking.
+Adds the refs/issues/* fetch refspec to the origin remote.
+EOF
+	exit 1
+}
+
+while test $# -gt 0
+do
+	case "$1" in
+		-h|--help)
+			usage
+			;;
+		*)
+			echo "error: unknown option '$1'" >&2
+			usage
+			;;
+	esac
+done
+
+# Verify we are inside a git repository
+git_dir="$(git rev-parse --git-dir 2>/dev/null)" || {
+	echo "fatal: not a git repository" >&2
+	exit 128
+}
+
+# Check if the refspec already exists
+existing="$(git config --get-all remote.origin.fetch 2>/dev/null || true)"
+if printf '%s\n' "$existing" | grep -q 'refs/issues'
+then
+	echo "git-issue: already configured for this repository."
+	exit 0
+fi
+
+# Add the fetch refspec for issues
+git config --add remote.origin.fetch '+refs/issues/*:refs/issues/*'
+echo "git-issue: configured. Issues will be fetched from origin."
+echo "Run 'git fetch origin' to pull existing issues."

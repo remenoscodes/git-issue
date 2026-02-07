@@ -1,0 +1,209 @@
+#!/bin/sh
+#
+# git-issue-state - Change the state of an issue
+#
+
+set -e
+
+usage() {
+	cat <<EOF
+usage: git issue state <issue-id> [options]
+
+Options:
+   --open                 Set state to open
+   --close                Set state to closed
+   --state <value>        Set state to a custom value
+   -m, --message <text>   Add a message with the state change
+   --fixed-by <sha>       Record the commit that fixes this issue
+   --release <version>    Record the release version
+   --reason <reason>      Reason for closing (duplicate, wontfix, invalid, completed)
+   -h, --help             Show this help
+EOF
+	exit 1
+}
+
+# Resolve a short issue ID to a full ref
+resolve_issue() {
+	prefix="$1"
+	git for-each-ref --format='%(refname)' refs/issues/ | while IFS= read -r ref
+	do
+		uuid="${ref#refs/issues/}"
+		case "$uuid" in
+			"$prefix"*)
+				printf '%s\n' "$ref"
+				;;
+		esac
+	done
+}
+
+issue_prefix=""
+new_state=""
+message=""
+fixed_by=""
+release=""
+reason=""
+
+# Parse the issue ID first
+if test $# -gt 0
+then
+	case "$1" in
+		-h|--help)
+			usage
+			;;
+		-*)
+			;;
+		*)
+			issue_prefix="$1"
+			shift
+			;;
+	esac
+fi
+
+while test $# -gt 0
+do
+	case "$1" in
+		--open)
+			new_state="open"
+			shift
+			;;
+		--close)
+			new_state="closed"
+			shift
+			;;
+		--state)
+			test $# -ge 2 || { echo "error: --state requires a value" >&2; exit 1; }
+			new_state="$2"
+			shift 2
+			;;
+		-m|--message)
+			test $# -ge 2 || { echo "error: -m requires a value" >&2; exit 1; }
+			message="$2"
+			shift 2
+			;;
+		--fixed-by)
+			test $# -ge 2 || { echo "error: --fixed-by requires a value" >&2; exit 1; }
+			fixed_by="$2"
+			shift 2
+			;;
+		--release)
+			test $# -ge 2 || { echo "error: --release requires a value" >&2; exit 1; }
+			release="$2"
+			shift 2
+			;;
+		--reason)
+			test $# -ge 2 || { echo "error: --reason requires a value" >&2; exit 1; }
+			reason="$2"
+			shift 2
+			;;
+		-h|--help)
+			usage
+			;;
+		--)
+			shift
+			break
+			;;
+		-*)
+			echo "error: unknown option '$1'" >&2
+			usage
+			;;
+		*)
+			if test -z "$issue_prefix"
+			then
+				issue_prefix="$1"
+			fi
+			shift
+			;;
+	esac
+done
+
+if test -z "$issue_prefix"
+then
+	echo "error: issue ID is required" >&2
+	usage
+fi
+
+if test -z "$new_state"
+then
+	echo "error: state is required (--open, --close, or --state <value>)" >&2
+	usage
+fi
+
+# Verify we are inside a git repository
+git rev-parse --git-dir >/dev/null 2>&1 || {
+	echo "fatal: not a git repository" >&2
+	exit 128
+}
+
+# Resolve the issue ID
+matches="$(resolve_issue "$issue_prefix")"
+count="$(printf '%s\n' "$matches" | grep -c . || true)"
+
+if test "$count" -eq 0
+then
+	echo "error: issue '$issue_prefix' not found" >&2
+	exit 1
+fi
+
+if test "$count" -gt 1
+then
+	echo "error: ambiguous issue prefix '$issue_prefix'" >&2
+	exit 1
+fi
+
+issue_ref="$matches"
+uuid="${issue_ref#refs/issues/}"
+short_id="$(printf '%s' "$uuid" | cut -c1-7)"
+
+# Get current issue HEAD
+issue_head="$(git rev-parse "$issue_ref")"
+
+# Build the commit message
+if test -n "$message"
+then
+	subject="$message"
+else
+	case "$new_state" in
+		open)   subject="Reopen issue" ;;
+		closed) subject="Close issue" ;;
+		*)      subject="Change state to $new_state" ;;
+	esac
+fi
+
+# Write message to temp file and add trailers
+tmpfile="$(mktemp)"
+trap 'rm -f "$tmpfile"' EXIT
+
+printf '%s\n' "$subject" > "$tmpfile"
+
+# Add trailers
+git interpret-trailers --in-place --trailer "State: $new_state" "$tmpfile"
+
+if test -n "$fixed_by"
+then
+	git interpret-trailers --in-place --trailer "Fixed-By: $fixed_by" "$tmpfile"
+fi
+
+if test -n "$release"
+then
+	git interpret-trailers --in-place --trailer "Release: $release" "$tmpfile"
+fi
+
+if test -n "$reason"
+then
+	git interpret-trailers --in-place --trailer "Reason: $reason" "$tmpfile"
+fi
+
+# Get the empty tree SHA
+empty_tree="$(git hash-object -t tree /dev/null)"
+
+# Create the commit with the current HEAD as parent
+commit="$(git commit-tree "$empty_tree" -p "$issue_head" < "$tmpfile")"
+
+# Update the ref
+git update-ref "$issue_ref" "$commit" "$issue_head"
+
+case "$new_state" in
+	open)   printf 'Reopened issue %s\n' "$short_id" ;;
+	closed) printf 'Closed issue %s\n' "$short_id" ;;
+	*)      printf 'Changed state of %s to %s\n' "$short_id" "$new_state" ;;
+esac

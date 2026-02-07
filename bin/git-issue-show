@@ -1,0 +1,183 @@
+#!/bin/sh
+#
+# git-issue-show - Show issue details and comments
+#
+
+set -e
+
+usage() {
+	cat <<EOF
+usage: git issue show <issue-id>
+
+Show details of an issue and its comments.
+
+   <issue-id>    Full UUID or abbreviated prefix (min 4 chars)
+   -h, --help    Show this help
+EOF
+	exit 1
+}
+
+# Resolve a short issue ID to a full ref
+resolve_issue() {
+	prefix="$1"
+	matches=""
+	count=0
+
+	git for-each-ref --format='%(refname)' refs/issues/ | while IFS= read -r ref
+	do
+		uuid="${ref#refs/issues/}"
+		case "$uuid" in
+			"$prefix"*)
+				printf '%s\n' "$ref"
+				;;
+		esac
+	done
+}
+
+if test $# -lt 1
+then
+	usage
+fi
+
+case "$1" in
+	-h|--help)
+		usage
+		;;
+esac
+
+issue_prefix="$1"
+
+# Verify we are inside a git repository
+git rev-parse --git-dir >/dev/null 2>&1 || {
+	echo "fatal: not a git repository" >&2
+	exit 128
+}
+
+# Resolve the issue ID
+matches="$(resolve_issue "$issue_prefix")"
+count="$(printf '%s\n' "$matches" | grep -c . || true)"
+
+if test "$count" -eq 0
+then
+	echo "error: issue '$issue_prefix' not found" >&2
+	exit 1
+fi
+
+if test "$count" -gt 1
+then
+	echo "error: ambiguous issue prefix '$issue_prefix', matches:" >&2
+	printf '%s\n' "$matches" | while IFS= read -r ref
+	do
+		uuid="${ref#refs/issues/}"
+		short="$(printf '%s' "$uuid" | cut -c1-7)"
+		title="$(git log -1 --format='%s' "$(git rev-list --max-parents=0 "$ref")")"
+		printf '  %s  %s\n' "$short" "$title" >&2
+	done
+	exit 1
+fi
+
+issue_ref="$matches"
+uuid="${issue_ref#refs/issues/}"
+short_id="$(printf '%s' "$uuid" | cut -c1-7)"
+
+# Get root commit
+root="$(git rev-list --max-parents=0 "$issue_ref")"
+
+# Get title and description from root commit
+title="$(git log -1 --format='%s' "$root")"
+# Get the body text, stripping trailer lines
+description="$(git log -1 --format='%b' "$root" | \
+	sed '/^[A-Z][A-Za-z-]*: /d' | \
+	sed '/^$/d')"
+
+# Get current state
+state="$(git log --format='%(trailers:key=State,valueonly)' "$issue_ref" | \
+	sed '/^$/d' | head -1)"
+test -n "$state" || state="open"
+state="$(printf '%s' "$state" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+
+# Get other metadata from most recent trailers
+labels="$(git log --format='%(trailers:key=Labels,valueonly)' "$issue_ref" | \
+	sed '/^$/d' | head -1)"
+assignee="$(git log --format='%(trailers:key=Assignee,valueonly)' "$issue_ref" | \
+	sed '/^$/d' | head -1)"
+priority="$(git log --format='%(trailers:key=Priority,valueonly)' "$issue_ref" | \
+	sed '/^$/d' | head -1)"
+milestone="$(git log --format='%(trailers:key=Milestone,valueonly)' "$issue_ref" | \
+	sed '/^$/d' | head -1)"
+
+# Get author and date
+author="$(git log -1 --format='%an <%ae>' "$root")"
+created="$(git log -1 --format='%ai' "$root")"
+
+# Print issue header
+printf 'Issue %s [%s]\n' "$short_id" "$state"
+printf '%.60s\n' "============================================================"
+printf 'Title:   %s\n' "$title"
+printf 'Author:  %s\n' "$author"
+printf 'Created: %s\n' "$created"
+
+if test -n "$labels"
+then
+	printf 'Labels:  %s\n' "$(printf '%s' "$labels" | sed 's/^[[:space:]]*//')"
+fi
+
+if test -n "$assignee"
+then
+	printf 'Assignee: %s\n' "$(printf '%s' "$assignee" | sed 's/^[[:space:]]*//')"
+fi
+
+if test -n "$priority"
+then
+	printf 'Priority: %s\n' "$(printf '%s' "$priority" | sed 's/^[[:space:]]*//')"
+fi
+
+if test -n "$milestone"
+then
+	printf 'Milestone: %s\n' "$(printf '%s' "$milestone" | sed 's/^[[:space:]]*//')"
+fi
+
+if test -n "$description"
+then
+	printf '\n%s\n' "$description"
+fi
+
+# Print comments and state changes (all commits except root)
+comment_count="$(git rev-list --count "$root..$issue_ref" 2>/dev/null || echo 0)"
+
+if test "$comment_count" -gt 0
+then
+	printf '\n%.60s\n' "------------------------------------------------------------"
+	printf 'Updates (%s):\n' "$comment_count"
+	printf '%.60s\n' "------------------------------------------------------------"
+
+	# Walk commits from oldest to newest (reverse order)
+	git rev-list --reverse "$root..$issue_ref" | while IFS= read -r commit
+	do
+		c_author="$(git log -1 --format='%an' "$commit")"
+		c_date="$(git log -1 --format='%ai' "$commit")"
+		c_subject="$(git log -1 --format='%s' "$commit")"
+		c_body="$(git log -1 --format='%b' "$commit")"
+		c_state="$(git log -1 --format='%(trailers:key=State,valueonly)' "$commit" | \
+			sed '/^$/d' | head -1)"
+
+		printf '\n  %s (%s):\n' "$c_author" "$c_date"
+
+		if test -n "$c_state"
+		then
+			c_state="$(printf '%s' "$c_state" | sed 's/^[[:space:]]*//')"
+			printf '  [State changed to: %s]\n' "$c_state"
+		fi
+
+		# Print subject and body, indented
+		printf '  %s\n' "$c_subject"
+		if test -n "$c_body"
+		then
+			# Strip trailers from body for display, indent each line
+			printf '%s\n' "$c_body" | \
+				sed '/^[A-Z][A-Za-z-]*: /d' | \
+				sed '/^$/d' | \
+				sed 's/^/  /'
+		fi
+	done
+fi

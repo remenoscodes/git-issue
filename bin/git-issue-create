@@ -1,0 +1,193 @@
+#!/bin/sh
+#
+# git-issue-create - Create a new issue
+#
+
+set -e
+
+usage() {
+	cat <<EOF
+usage: git issue create [options] <title>
+
+Options:
+   -m, --message <text>    Issue description (body)
+   -l, --label <label>     Add a label (can be repeated)
+   -a, --assignee <email>  Assign to someone
+   -p, --priority <level>  Set priority (low, medium, high, critical)
+   --milestone <name>      Set milestone
+   -h, --help              Show this help
+EOF
+	exit 1
+}
+
+# Validate that a string contains no newlines
+validate_no_newlines() {
+	case "$1" in
+		*"
+"*)
+			echo "error: $2 must not contain newlines" >&2
+			exit 1
+			;;
+	esac
+}
+
+title=""
+body=""
+labels=""
+assignee=""
+priority=""
+milestone=""
+
+while test $# -gt 0
+do
+	case "$1" in
+		-m|--message)
+			test $# -ge 2 || { echo "error: -m requires a value" >&2; exit 1; }
+			body="$2"
+			shift 2
+			;;
+		-l|--label)
+			test $# -ge 2 || { echo "error: -l requires a value" >&2; exit 1; }
+			validate_no_newlines "$2" "label"
+			if test -n "$labels"
+			then
+				labels="$labels, $2"
+			else
+				labels="$2"
+			fi
+			shift 2
+			;;
+		-a|--assignee)
+			test $# -ge 2 || { echo "error: -a requires a value" >&2; exit 1; }
+			validate_no_newlines "$2" "assignee"
+			assignee="$2"
+			shift 2
+			;;
+		-p|--priority)
+			test $# -ge 2 || { echo "error: -p requires a value" >&2; exit 1; }
+			case "$2" in
+				low|medium|high|critical) ;;
+				*)
+					echo "error: priority must be low, medium, high, or critical" >&2
+					exit 1
+					;;
+			esac
+			priority="$2"
+			shift 2
+			;;
+		--milestone)
+			test $# -ge 2 || { echo "error: --milestone requires a value" >&2; exit 1; }
+			validate_no_newlines "$2" "milestone"
+			milestone="$2"
+			shift 2
+			;;
+		-h|--help)
+			usage
+			;;
+		--)
+			shift
+			break
+			;;
+		-*)
+			echo "error: unknown option '$1'" >&2
+			usage
+			;;
+		*)
+			# Collect positional args as title words
+			if test -z "$title"
+			then
+				title="$1"
+			else
+				title="$title $1"
+			fi
+			shift
+			;;
+	esac
+done
+
+if test -z "$title"
+then
+	echo "error: issue title is required" >&2
+	usage
+fi
+validate_no_newlines "$title" "title"
+
+# Verify we are inside a git repository
+git_dir="$(git rev-parse --git-dir 2>/dev/null)" || {
+	echo "fatal: not a git repository" >&2
+	exit 128
+}
+
+# Generate UUID
+if command -v uuidgen >/dev/null 2>&1
+then
+	uuid="$(uuidgen | tr '[:upper:]' '[:lower:]')"
+elif test -r /proc/sys/kernel/random/uuid
+then
+	uuid="$(cat /proc/sys/kernel/random/uuid)"
+else
+	# Fallback: generate from random bytes
+	uuid="$(od -x -N 16 /dev/urandom | head -1 | awk '{
+		printf "%s%s-%s-%s-%s-%s%s%s\n",
+			$2,$3,$4,
+			substr($5,1,4),
+			substr($5,5,4),
+			$6,$7,$8
+	}')"
+fi
+
+# Short display ID (first 7 chars before the first hyphen)
+short_id="$(printf '%s' "$uuid" | cut -c1-7)"
+
+# Build the commit message
+# Start with title
+msg="$title"
+
+# Add body if provided
+if test -n "$body"
+then
+	msg="$msg
+
+$body"
+fi
+
+tmpfile="$(mktemp)"
+trap 'rm -f "$tmpfile"' EXIT
+
+printf '%s\n' "$msg" > "$tmpfile"
+
+# Add trailers one at a time using git interpret-trailers
+git interpret-trailers --in-place --trailer "State: open" "$tmpfile"
+
+if test -n "$labels"
+then
+	git interpret-trailers --in-place --trailer "Labels: $labels" "$tmpfile"
+fi
+
+if test -n "$assignee"
+then
+	git interpret-trailers --in-place --trailer "Assignee: $assignee" "$tmpfile"
+fi
+
+if test -n "$priority"
+then
+	git interpret-trailers --in-place --trailer "Priority: $priority" "$tmpfile"
+fi
+
+if test -n "$milestone"
+then
+	git interpret-trailers --in-place --trailer "Milestone: $milestone" "$tmpfile"
+fi
+
+git interpret-trailers --in-place --trailer "Format-Version: 1" "$tmpfile"
+
+# Get the empty tree SHA
+empty_tree="$(git hash-object -t tree /dev/null)"
+
+# Create the commit object (orphan -- no parent)
+commit="$(git commit-tree "$empty_tree" < "$tmpfile")"
+
+# Create the ref
+git update-ref "refs/issues/$uuid" "$commit"
+
+printf 'Created issue %s\n' "$short_id"
