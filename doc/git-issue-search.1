@@ -1,0 +1,42 @@
+.TH GIT\-ISSUE\-SEARCH 1 "2026-02-07" "git-issue 0.5.0" "Git Issue Manual"
+.SH NAME
+git\-issue\-search \- search issues by text pattern
+.SH SYNOPSIS
+.B git issue search
+.I <pattern>
+.RI [ options ]
+.SH DESCRIPTION
+Search issue titles, bodies, and comments for a text pattern.
+The pattern is matched as a fixed string by default (not a regular
+expression).
+.PP
+Matching issues are listed with their ID, state, and title.
+Up to 5 matching lines per issue are shown with line numbers.
+.SH OPTIONS
+.TP
+.BR \-s ", " \-\-state " " \fI<state>\fR
+Filter by state:
+.BR open ", " closed ", " all " (default)."
+.TP
+.BR \-i ", " \-\-ignore\-case
+Case-insensitive search.
+.TP
+.BR \-h ", " \-\-help
+Show usage information.
+.SH EXAMPLES
+Search for a string:
+.RS
+.nf
+$ git issue search "timeout"
+.fi
+.RE
+.PP
+Case-insensitive search in open issues only:
+.RS
+.nf
+$ git issue search "login" -i -s open
+.fi
+.RE
+.SH SEE ALSO
+.BR git\-issue (1),
+.BR git\-issue\-ls (1)

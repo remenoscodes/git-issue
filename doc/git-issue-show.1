@@ -1,0 +1,38 @@
+.TH GIT\-ISSUE\-SHOW 1 "2026-02-07" "git-issue 0.5.0" "Git Issue Manual"
+.SH NAME
+git\-issue\-show \- show issue details and comments
+.SH SYNOPSIS
+.B git issue show
+.I <issue-id>
+.SH DESCRIPTION
+Display the full details of an issue including its title, author,
+creation date, metadata (labels, assignee, priority, milestone),
+description body, and all subsequent updates (comments and state
+changes) in chronological order.
+.SH OPTIONS
+.TP
+.I <issue-id>
+Full UUID or abbreviated prefix (minimum 4 characters).
+If the prefix is ambiguous, all matching issues are listed and
+the command exits with an error.
+.TP
+.BR \-h ", " \-\-help
+Show usage information.
+.SH EXAMPLES
+Show an issue by short ID:
+.RS
+.nf
+$ git issue show a1b2c3d
+.fi
+.RE
+.PP
+Show an issue by full UUID:
+.RS
+.nf
+$ git issue show a1b2c3d4-e5f6-7890-abcd-ef1234567890
+.fi
+.RE
+.SH SEE ALSO
+.BR git\-issue (1),
+.BR git\-issue\-ls (1),
+.BR git\-issue\-comment (1)

@@ -1,0 +1,61 @@
+.TH GIT\-ISSUE\-EXPORT 1 "2026-02-07" "git-issue 0.5.0" "Git Issue Manual"
+.SH NAME
+git\-issue\-export \- export issues to an external provider
+.SH SYNOPSIS
+.B git issue export
+.IR github: <owner> / <repo>
+.RI [ options ]
+.SH DESCRIPTION
+Export local
+.B git\-issue
+issues to an external issue tracker.
+.PP
+Currently supported providers:
+.TP
+.BI github: <owner> / <repo>
+GitHub Issues via the GitHub CLI
+.RB ( gh ).
+.PP
+Issues that were previously imported from a different repository
+(identified by a foreign
+.B Provider\-ID:
+trailer) are skipped.
+Issues already exported to the target repository are synced
+(state is updated on the remote).
+New issues are created on the remote with their comments, and a
+.B Provider\-ID:
+trailer is recorded locally.
+.SH OPTIONS
+.TP
+.B \-\-dry\-run
+Show what would be exported without making changes.
+.TP
+.BR \-h ", " \-\-help
+Show usage information.
+.SH PREREQUISITES
+.IP \(bu 2
+.BR gh (1)
+(GitHub CLI), authenticated via
+.BR "gh auth login" .
+.IP \(bu 2
+.BR jq (1)
+for JSON processing.
+.SH EXAMPLES
+Export all local issues to GitHub:
+.RS
+.nf
+$ git issue export github:owner/repo
+.fi
+.RE
+.PP
+Preview what would be exported:
+.RS
+.nf
+$ git issue export github:owner/repo --dry-run
+.fi
+.RE
+.SH SEE ALSO
+.BR git\-issue (1),
+.BR git\-issue\-import (1),
+.BR git\-issue\-sync (1),
+.BR gh (1)

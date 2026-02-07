@@ -1,0 +1,127 @@
+.TH GIT\-ISSUE 1 "2026-02-07" "git-issue 0.5.0" "Git Issue Manual"
+.SH NAME
+git\-issue \- distributed issue tracking embedded in Git
+.SH SYNOPSIS
+.B git issue
+.I <command>
+.RI [ <args> ]
+.SH DESCRIPTION
+.B git\-issue
+is a distributed issue tracker that stores issues directly inside a Git
+repository as orphan commit chains under
+.BR refs/issues/ .
+Each issue is identified by a UUID and has a 7-character abbreviated
+display ID.
+Issues are first-class Git objects: they travel with
+.BR "git fetch" / "git push" ,
+merge across forks, and work fully offline.
+.PP
+Issue metadata (state, labels, assignee, priority, milestone) is stored
+as Git trailers in commit messages.
+The root commit of each chain holds the issue title and initial metadata.
+Subsequent commits represent comments, state changes, and edits.
+.SH COMMANDS
+.TP
+.B init
+Configure the current repository for issue tracking by adding the
+.B refs/issues/*
+fetch refspec to a remote.
+.TP
+.B create
+Create a new issue with a title and optional metadata.
+.TP
+.B ls
+List issues with filtering and sorting options.
+.TP
+.B show
+Show full details and comment history of an issue.
+.TP
+.B comment
+Add a comment to an existing issue.
+.TP
+.B edit
+Edit issue metadata (title, labels, assignee, priority, milestone).
+.TP
+.B state
+Change the state of an issue (open, close, or custom).
+.TP
+.B search
+Search issue titles, bodies, and comments for a text pattern.
+.TP
+.B merge
+Fetch and merge issues from a remote repository with automatic
+conflict resolution.
+.TP
+.B fsck
+Validate issue data integrity (UUID format, empty trees, required
+trailers, commit chain structure).
+.TP
+.B import
+Import issues from an external provider (currently GitHub).
+.TP
+.B export
+Export local issues to an external provider (currently GitHub).
+.TP
+.B sync
+Two-way synchronization (import followed by export).
+.TP
+.B version
+Print version information.
+.SH DATA MODEL
+Each issue lives under
+.BI refs/issues/ <uuid>
+as a linear chain of commits (or a DAG after merges).
+All commits use the empty tree so that no files are stored.
+.PP
+The root commit message has the form:
+.RS
+.nf
+<title>
+
+<optional body>
+
+State: open
+Labels: bug, urgent
+Assignee: user@example.com
+Priority: high
+Milestone: v1.0
+Format-Version: 1
+.fi
+.RE
+.PP
+Subsequent commits may carry trailers to record state changes,
+metadata edits, or just plain-text comments.
+.SH MERGE STRATEGY
+When issues diverge between repositories,
+.B git issue merge
+uses field-specific resolution:
+.IP \(bu 2
+Scalar fields (state, assignee, priority, milestone): last-writer-wins
+by commit timestamp.
+.IP \(bu 2
+Labels: three-way set merge (additions from both sides are unioned,
+removals are respected unless the same label was re-added).
+.IP \(bu 2
+Comments: union of both chains via a two-parent merge commit.
+.SH ENVIRONMENT
+.B git\-issue
+requires a working Git installation (2.0 or later).
+Bridge commands (import, export, sync) additionally require
+.BR gh (1)
+and
+.BR jq (1).
+.SH SEE ALSO
+.BR git\-issue\-init (1),
+.BR git\-issue\-create (1),
+.BR git\-issue\-ls (1),
+.BR git\-issue\-show (1),
+.BR git\-issue\-comment (1),
+.BR git\-issue\-edit (1),
+.BR git\-issue\-state (1),
+.BR git\-issue\-search (1),
+.BR git\-issue\-merge (1),
+.BR git\-issue\-fsck (1),
+.BR git\-issue\-import (1),
+.BR git\-issue\-export (1),
+.BR git\-issue\-sync (1),
+.BR git (1)

@@ -1,0 +1,85 @@
+.TH GIT\-ISSUE\-LS 1 "2026-02-07" "git-issue 0.5.0" "Git Issue Manual"
+.SH NAME
+git\-issue\-ls \- list issues
+.SH SYNOPSIS
+.B git issue ls
+.RI [ options ]
+.SH DESCRIPTION
+List issues in the current repository with optional filtering by state,
+label, assignee, or priority.
+Results can be sorted and displayed in multiple output formats.
+.PP
+By default, only open issues are shown, sorted by creation date
+(newest first).
+.SH OPTIONS
+.TP
+.BR \-s ", " \-\-state " " \fI<state>\fR
+Filter by state:
+.BR open " (default), " closed ", " all .
+.TP
+.BR \-l ", " \-\-label " " \fI<label>\fR
+Filter by label.
+.TP
+.BI \-\-assignee " " <email>
+Filter by assignee.
+.TP
+.BI \-\-priority " " <level>
+Filter by priority:
+.BR low ", " medium ", " high ", " critical .
+.TP
+.BR \-a ", " \-\-all
+Show all issues regardless of state.
+Equivalent to
+.BR "\-\-state all" .
+.TP
+.BR \-f ", " \-\-format " " \fI<format>\fR
+Output format:
+.BR short " (default), " full ", " oneline .
+.RS
+.TP
+.B short
+.I <id> [<state>] <title>
+.TP
+.B full
+Same as short with labels, assignee, priority, and milestone on a
+second line.
+.TP
+.B oneline
+.I <id> <state> <title>
+(no brackets, suitable for scripting)
+.RE
+.TP
+.BI \-\-sort " " <field>
+Sort by:
+.BR created " (default), " updated ", " priority ", " state .
+.TP
+.B \-\-reverse
+Reverse the sort order.
+.TP
+.BR \-h ", " \-\-help
+Show usage information.
+.SH EXAMPLES
+List all open issues:
+.RS
+.nf
+$ git issue ls
+.fi
+.RE
+.PP
+List closed high-priority issues:
+.RS
+.nf
+$ git issue ls -s closed --priority high
+.fi
+.RE
+.PP
+Machine-readable output sorted by priority:
+.RS
+.nf
+$ git issue ls -a -f oneline --sort priority
+.fi
+.RE
+.SH SEE ALSO
+.BR git\-issue (1),
+.BR git\-issue\-show (1),
+.BR git\-issue\-search (1)

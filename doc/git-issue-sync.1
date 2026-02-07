@@ -1,0 +1,44 @@
+.TH GIT\-ISSUE\-SYNC 1 "2026-02-07" "git-issue 0.5.0" "Git Issue Manual"
+.SH NAME
+git\-issue\-sync \- two-way sync with an external provider
+.SH SYNOPSIS
+.B git issue sync
+.IR github: <owner> / <repo>
+.RI [ options ]
+.SH DESCRIPTION
+Perform a two-way synchronization with an external issue tracker.
+This is a convenience wrapper that runs
+.BR "git issue import" (1)
+followed by
+.BR "git issue export" (1)
+against the same provider.
+.SH OPTIONS
+.TP
+.BI \-\-state " " <state>
+Filter for the import phase:
+.BR open " (default), " closed ", " all .
+.TP
+.B \-\-dry\-run
+Show what would happen without making changes (passed to both
+import and export).
+.TP
+.BR \-h ", " \-\-help
+Show usage information.
+.SH EXAMPLES
+Sync with GitHub:
+.RS
+.nf
+$ git issue sync github:owner/repo
+.fi
+.RE
+.PP
+Dry-run to preview changes:
+.RS
+.nf
+$ git issue sync github:owner/repo --dry-run --state all
+.fi
+.RE
+.SH SEE ALSO
+.BR git\-issue (1),
+.BR git\-issue\-import (1),
+.BR git\-issue\-export (1)

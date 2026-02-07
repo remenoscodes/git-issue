@@ -1,0 +1,63 @@
+.TH GIT\-ISSUE\-IMPORT 1 "2026-02-07" "git-issue 0.5.0" "Git Issue Manual"
+.SH NAME
+git\-issue\-import \- import issues from an external provider
+.SH SYNOPSIS
+.B git issue import
+.IR github: <owner> / <repo>
+.RI [ options ]
+.SH DESCRIPTION
+Import issues from an external issue tracker into the local Git
+repository as
+.B git\-issue
+refs.
+.PP
+Currently supported providers:
+.TP
+.BI github: <owner> / <repo>
+GitHub Issues via the GitHub CLI
+.RB ( gh ).
+.PP
+Already-imported issues (identified by their
+.B Provider\-ID:
+trailer) are skipped.
+Comments are imported as child commits, and closed issues receive a
+state-change commit.
+Original authors and timestamps are preserved.
+.SH OPTIONS
+.TP
+.BI \-\-state " " <state>
+Filter issues to import:
+.BR open " (default), " closed ", " all .
+.TP
+.B \-\-dry\-run
+Show what would be imported without making changes.
+.TP
+.BR \-h ", " \-\-help
+Show usage information.
+.SH PREREQUISITES
+.IP \(bu 2
+.BR gh (1)
+(GitHub CLI), authenticated via
+.BR "gh auth login" .
+.IP \(bu 2
+.BR jq (1)
+for JSON processing.
+.SH EXAMPLES
+Import open issues:
+.RS
+.nf
+$ git issue import github:owner/repo
+.fi
+.RE
+.PP
+Preview what would be imported:
+.RS
+.nf
+$ git issue import github:owner/repo --state all --dry-run
+.fi
+.RE
+.SH SEE ALSO
+.BR git\-issue (1),
+.BR git\-issue\-export (1),
+.BR git\-issue\-sync (1),
+.BR gh (1)

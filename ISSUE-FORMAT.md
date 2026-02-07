@@ -421,94 +421,109 @@ git fetch origin
 Implementations SHOULD configure this refspec automatically when
 initialized in a repository.
 
-### 7.4 Shallow and Partial Clones
+### 7.4 Merging Issues from a Remote
+
+When issues are fetched from a remote, the local and remote refs may
+diverge (both sides made changes since the last sync). Implementations
+SHOULD resolve divergent refs automatically using the merge rules in
+Section 6.
+
+The merge workflow:
+
+1. Fetch remote issue refs into a staging namespace:
+   ```sh
+   git fetch <remote> '+refs/issues/*:refs/remotes/<remote>/issues/*'
+   ```
+
+2. For each remote ref, compare with the corresponding local ref:
+   - **New issue** (no local ref): create local ref pointing to remote HEAD
+   - **Fast-forward** (local is ancestor of remote): update local ref
+   - **Up-to-date** (remote is ancestor of local): no action
+   - **Diverged**: create a merge commit with two parents (local HEAD
+     and remote HEAD), resolving metadata per Section 6
+
+3. Clean up remote tracking refs after merge.
+
+Merge commits use the empty tree (same as all issue commits) and carry
+the resolved metadata as trailers.
+
+### 7.5 Shallow and Partial Clones
 
 Issues are compatible with shallow clones. A shallow fetch of
 `refs/issues/*` with `--depth=1` provides the current state of all
 issues without full history. This is useful for large repositories
 where full issue history is not needed locally.
 
+### 7.6 Performance Considerations
+
+Each issue creates one Git ref. For repositories with many issues
+(1000+), the ref advertisement during `git fetch` can become a
+bottleneck on Git protocol v1, which advertises ALL refs.
+
+Implementations SHOULD recommend Git protocol v2, which uses
+server-side ref filtering:
+
+```sh
+git config protocol.version 2
+```
+
+With protocol v2, only requested refs are transferred, keeping fetch
+performance constant regardless of issue count.
+
 ---
 
 ## 8. Bridge Protocol
 
-> **Status: Planned — Not Yet Implemented**
->
-> This section describes a future bridge protocol design. Current
-> implementations use direct provider integrations (e.g., `gh` CLI for
-> GitHub) rather than this protocol. The Provider-ID mechanism in
-> Section 9 is implemented and stable. This protocol will be
-> implemented when a second provider backend is needed.
-
 External issue trackers (GitHub, GitLab, Jira) can be bridged via
-provider plugins. A bridge plugin is a separate executable named
-`git-issue-remote-<provider>` that speaks a line-oriented text protocol
-on stdin/stdout.
+import/export operations. The current implementation uses direct
+provider integrations; a plugin protocol is planned for when multiple
+provider backends exist.
 
-### 8.1 Capabilities
+### 8.1 Import
 
-```
-< capabilities
-> list
-> fetch
-> push
-> import-all
->
-```
+Import creates local `refs/issues/` commits from an external provider:
 
-### 8.2 List
+1. Fetch issue list from the provider (paginated)
+2. For each issue not already imported (checked via `Provider-ID:` trailer):
+   - Generate a UUID and create a root commit with full metadata
+   - Set `GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_AUTHOR_DATE` from
+     the original author
+   - Import comments as child commits preserving original authorship
+   - If the issue is closed, append a `State: closed` commit
+   - Record the source via `Provider-ID:` trailer (see Section 9)
+3. Skip issues whose `Provider-ID:` already exists locally (idempotent)
 
-```
-< list [--state=open|closed|all]
-> <uuid-prefix> <state> <title>
-> <uuid-prefix> <state> <title>
->
-```
+Implementations MUST filter out non-issue items (e.g., GitHub pull
+requests are not issues).
 
-### 8.3 Fetch
+### 8.2 Export
 
-```
-< fetch <remote-id>
-> uuid: <uuid>
-> title: <title>
-> state: <state>
-> labels: <comma-separated>
-> author: <name> <email>
-> date: <ISO-8601>
-> body:
-> <body text, dot-stuffed>
-> .
-> comment:
-> author: <name> <email>
-> date: <ISO-8601>
-> <comment text, dot-stuffed>
-> .
->
-```
+Export creates provider issues from local `refs/issues/` data:
 
-### 8.4 Push
+1. For each local issue ref:
+   - If `Provider-ID:` matches the target provider: sync state changes
+   - If `Provider-ID:` matches a different provider: skip (foreign import)
+   - If no `Provider-ID:`: create a new issue on the provider, export
+     comments, sync state, and record the `Provider-ID:` locally by
+     appending a child commit
+2. Comment export: commits without trailers are treated as comments;
+   commits with trailers are metadata changes (skipped)
 
-```
-< push <uuid>
-> ok <remote-id>
-```
+### 8.3 Round-Trip Safety
 
-or
+The `Provider-ID:` trailer ensures:
+- Import then export does not create duplicates
+- Re-import skips already-imported issues
+- Re-export syncs state without duplicating
 
-```
-> error <message>
-```
+### 8.4 Future: Plugin Protocol
 
-### 8.5 Import All
-
-```
-< import-all
-> (same as multiple fetch responses)
-```
-
-The protocol uses **line-oriented text, NOT JSON**. This eliminates
-the JSON injection class of bugs and allows simple shell-based
-implementations.
+When a second provider backend is needed, implementations MAY adopt a
+plugin protocol where `git-issue-remote-<provider>` is a separate
+executable speaking a line-oriented text protocol on stdin/stdout.
+The protocol SHOULD support `capabilities`, `list`, `fetch`, and `push`
+commands. The protocol MUST use line-oriented text (NOT JSON) to
+eliminate JSON injection vulnerabilities.
 
 ---
 

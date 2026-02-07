@@ -1,0 +1,45 @@
+.TH GIT\-ISSUE\-INIT 1 "2026-02-07" "git-issue 0.5.0" "Git Issue Manual"
+.SH NAME
+git\-issue\-init \- configure a repository for issue tracking
+.SH SYNOPSIS
+.B git issue init
+.RI [ <remote> ]
+.SH DESCRIPTION
+Configure the current repository for
+.B git\-issue
+tracking by adding the
+.B +refs/issues/*:refs/issues/*
+fetch refspec to the specified remote.
+This causes
+.BR "git fetch" (1)
+to automatically pull issue refs alongside normal branches.
+.PP
+If the refspec is already configured, the command exits successfully
+with a message.
+.SH OPTIONS
+.TP
+.I <remote>
+Name of the remote to configure.
+Defaults to
+.BR origin .
+.TP
+.BR \-h ", " \-\-help
+Show usage information.
+.SH EXAMPLES
+Configure the default remote:
+.RS
+.nf
+$ git issue init
+.fi
+.RE
+.PP
+Configure a specific remote:
+.RS
+.nf
+$ git issue init upstream
+.fi
+.RE
+.SH SEE ALSO
+.BR git\-issue (1),
+.BR git\-remote (1),
+.BR git\-fetch (1)

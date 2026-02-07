@@ -1,0 +1,57 @@
+.TH GIT\-ISSUE\-CREATE 1 "2026-02-07" "git-issue 0.5.0" "Git Issue Manual"
+.SH NAME
+git\-issue\-create \- create a new issue
+.SH SYNOPSIS
+.B git issue create
+.RI [ options ]
+.I <title>
+.SH DESCRIPTION
+Create a new issue in the current repository.
+A UUID is generated for the issue and stored as a ref under
+.BR refs/issues/ .
+The root commit contains the title, optional body, and metadata
+as Git trailers.
+.PP
+On success, the 7-character abbreviated issue ID is printed.
+.SH OPTIONS
+.TP
+.BR \-m ", " \-\-message " " \fI<text>\fR
+Issue description (body text).
+.TP
+.BR \-l ", " \-\-label " " \fI<label>\fR
+Add a label.
+Can be repeated to add multiple labels.
+.TP
+.BR \-a ", " \-\-assignee " " \fI<email>\fR
+Assign the issue to someone.
+.TP
+.BR \-p ", " \-\-priority " " \fI<level>\fR
+Set priority.
+Must be one of:
+.BR low ", " medium ", " high ", " critical .
+.TP
+.BI \-\-milestone " " <name>
+Set the milestone.
+.TP
+.BR \-h ", " \-\-help
+Show usage information.
+.SH EXAMPLES
+Create a simple issue:
+.RS
+.nf
+$ git issue create "Fix login timeout"
+.fi
+.RE
+.PP
+Create an issue with metadata:
+.RS
+.nf
+$ git issue create "Fix login timeout" \\
+    -m "Users report 30s hangs on slow networks" \\
+    -l bug -l urgent -p high -a dev@example.com
+.fi
+.RE
+.SH SEE ALSO
+.BR git\-issue (1),
+.BR git\-issue\-show (1),
+.BR git\-issue\-edit (1)

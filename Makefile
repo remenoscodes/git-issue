@@ -1,7 +1,9 @@
 prefix = /usr/local
 bindir = $(prefix)/bin
+mandir = $(prefix)/share/man/man1
 
 SCRIPTS = $(wildcard bin/git-issue*)
+MANPAGES = $(wildcard doc/git-issue*.1)
 VERSION = $(shell sed -n 's/^VERSION="\(.*\)"/\1/p' bin/git-issue)
 
 all:
@@ -9,6 +11,8 @@ all:
 	@echo "  make install          Install to $(bindir)"
 	@echo "  make install prefix=~ Install to ~/bin"
 	@echo "  make uninstall        Remove from $(bindir)"
+	@echo "  make install-doc      Install man pages to $(mandir)"
+	@echo "  make uninstall-doc    Remove man pages from $(mandir)"
 	@echo "  make test             Run all tests"
 
 install:
@@ -17,6 +21,13 @@ install:
 
 uninstall:
 	rm -f $(DESTDIR)$(bindir)/git-issue $(DESTDIR)$(bindir)/git-issue-*
+
+install-doc:
+	install -d $(DESTDIR)$(mandir)
+	install -m 644 $(MANPAGES) $(DESTDIR)$(mandir)/
+
+uninstall-doc:
+	cd $(DESTDIR)$(mandir) && rm -f git-issue.1 git-issue-*.1
 
 test:
 	@sh t/test-issue.sh
@@ -27,4 +38,4 @@ test:
 clean:
 	rm -rf t/tmp-*
 
-.PHONY: all install uninstall test clean
+.PHONY: all install uninstall install-doc uninstall-doc test clean

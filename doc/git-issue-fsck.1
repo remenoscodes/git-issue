@@ -1,0 +1,49 @@
+.TH GIT\-ISSUE\-FSCK 1 "2026-02-07" "git-issue 0.5.0" "Git Issue Manual"
+.SH NAME
+git\-issue\-fsck \- validate issue data integrity
+.SH SYNOPSIS
+.B git issue fsck
+.RI [ options ]
+.SH DESCRIPTION
+Validate all issue refs for data integrity.
+The following checks are performed on each issue:
+.IP \(bu 2
+Ref name matches UUID format
+.RI ( xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx ).
+.IP \(bu 2
+All commits in the chain use the empty tree.
+.IP \(bu 2
+The root commit has required
+.B State:
+and
+.B Format\-Version:
+trailers.
+.IP \(bu 2
+The commit chain has exactly one root commit.
+.PP
+A summary of checked issues and error count is printed.
+The exit status is non-zero if any errors are found.
+.SH OPTIONS
+.TP
+.B \-\-quiet
+Only show errors; suppress per-issue "ok" messages.
+.TP
+.BR \-h ", " \-\-help
+Show usage information.
+.SH EXAMPLES
+Check all issues:
+.RS
+.nf
+$ git issue fsck
+.fi
+.RE
+.PP
+Quiet mode for scripting:
+.RS
+.nf
+$ git issue fsck --quiet || echo "Issues have errors"
+.fi
+.RE
+.SH SEE ALSO
+.BR git\-issue (1),
+.BR git\-fsck (1)

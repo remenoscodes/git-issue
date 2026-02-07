@@ -70,10 +70,25 @@ root="$(git rev-list --max-parents=0 "$issue_ref")"
 
 # Get title (respects Title: trailer override)
 title="$(get_issue_title "$issue_ref")"
-# Get the body text, stripping trailer lines
-description="$(git log -1 --format='%b' "$root" | \
-	sed '/^[A-Z][A-Za-z-]*: /d' | \
-	sed '/^$/d')"
+# Get the body text, stripping trailer block via interpret-trailers
+raw_desc="$(git log -1 --format='%b' "$root")"
+description=""
+if test -n "$raw_desc"
+then
+	desc_trailers="$(printf '%s\n' "$raw_desc" | git interpret-trailers --parse 2>/dev/null)" || desc_trailers=""
+	if test -n "$desc_trailers"
+	then
+		n_t="$(printf '%s\n' "$desc_trailers" | wc -l | tr -d ' ')"
+		n_d="$(printf '%s\n' "$raw_desc" | wc -l | tr -d ' ')"
+		n_k=$((n_d - n_t - 1))
+		if test "$n_k" -gt 0
+		then
+			description="$(printf '%s\n' "$raw_desc" | head -n "$n_k")"
+		fi
+	else
+		description="$raw_desc"
+	fi
+fi
 
 # Get current state
 state="$(git log --format='%(trailers:key=State,valueonly)' "$issue_ref" | \
@@ -159,10 +174,19 @@ then
 		if test -n "$c_body"
 		then
 			# Strip trailers from body for display, indent each line
-			printf '%s\n' "$c_body" | \
-				sed '/^[A-Z][A-Za-z-]*: /d' | \
-				sed '/^$/d' | \
-				sed 's/^/  /'
+			c_trailers="$(printf '%s\n' "$c_body" | git interpret-trailers --parse 2>/dev/null)" || c_trailers=""
+			if test -n "$c_trailers"
+			then
+				c_nt="$(printf '%s\n' "$c_trailers" | wc -l | tr -d ' ')"
+				c_nd="$(printf '%s\n' "$c_body" | wc -l | tr -d ' ')"
+				c_nk=$((c_nd - c_nt - 1))
+				if test "$c_nk" -gt 0
+				then
+					printf '%s\n' "$c_body" | head -n "$c_nk" | sed '/^$/d' | sed 's/^/  /'
+				fi
+			else
+				printf '%s\n' "$c_body" | sed '/^$/d' | sed 's/^/  /'
+			fi
 		fi
 	done
 fi

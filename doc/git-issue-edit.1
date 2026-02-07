@@ -1,0 +1,68 @@
+.TH GIT\-ISSUE\-EDIT 1 "2026-02-07" "git-issue 0.5.0" "Git Issue Manual"
+.SH NAME
+git\-issue\-edit \- edit issue metadata
+.SH SYNOPSIS
+.B git issue edit
+.I <issue-id>
+.RI [ options ]
+.SH DESCRIPTION
+Edit the metadata of an existing issue.
+At least one edit option must be specified.
+Changes are recorded as a new commit appended to the issue's
+commit chain with appropriate Git trailers.
+.SH OPTIONS
+.TP
+.BR \-t ", " \-\-title " " \fI<text>\fR
+Change the issue title.
+.TP
+.BR \-l ", " \-\-label " " \fI<label>\fR
+Set labels, replacing all existing labels.
+Can be repeated to set multiple labels.
+.TP
+.BI \-\-add\-label " " <label>
+Add a label to the existing label set.
+.TP
+.BI \-\-remove\-label " " <label>
+Remove a label from the existing label set.
+.TP
+.BR \-a ", " \-\-assignee " " \fI<email>\fR
+Change the assignee.
+.TP
+.BR \-p ", " \-\-priority " " \fI<level>\fR
+Change the priority:
+.BR low ", " medium ", " high ", " critical .
+.TP
+.BI \-\-milestone " " <name>
+Change the milestone.
+.TP
+.BR \-m ", " \-\-message " " \fI<text>\fR
+Custom commit message for the edit.
+Defaults to a generated summary of the changed fields.
+.TP
+.BR \-h ", " \-\-help
+Show usage information.
+.SH EXAMPLES
+Change priority and add a label:
+.RS
+.nf
+$ git issue edit a1b2c3d -p critical --add-label regression
+.fi
+.RE
+.PP
+Replace all labels:
+.RS
+.nf
+$ git issue edit a1b2c3d -l bug -l frontend
+.fi
+.RE
+.PP
+Rename an issue:
+.RS
+.nf
+$ git issue edit a1b2c3d -t "New title for the issue"
+.fi
+.RE
+.SH SEE ALSO
+.BR git\-issue (1),
+.BR git\-issue\-state (1),
+.BR git\-issue\-show (1)

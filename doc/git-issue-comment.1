@@ -1,0 +1,35 @@
+.TH GIT\-ISSUE\-COMMENT 1 "2026-02-07" "git-issue 0.5.0" "Git Issue Manual"
+.SH NAME
+git\-issue\-comment \- add a comment to an issue
+.SH SYNOPSIS
+.B git issue comment
+.I <issue-id>
+.B \-m
+.I <message>
+.SH DESCRIPTION
+Add a comment to an existing issue.
+The comment is recorded as a new commit appended to the issue's
+commit chain.
+.PP
+Multi-line comments are supported, but lines that resemble issue
+metadata trailers (e.g., lines starting with
+.IR "State:" ", " "Labels:" ", " "Priority:" )
+are rejected to prevent accidental corruption of issue metadata.
+.SH OPTIONS
+.TP
+.BR \-m ", " \-\-message " " \fI<text>\fR
+Comment text (required).
+.TP
+.BR \-h ", " \-\-help
+Show usage information.
+.SH EXAMPLES
+Add a comment:
+.RS
+.nf
+$ git issue comment a1b2c3d -m "Fixed in commit abc1234"
+.fi
+.RE
+.SH SEE ALSO
+.BR git\-issue (1),
+.BR git\-issue\-show (1),
+.BR git\-issue\-state (1)

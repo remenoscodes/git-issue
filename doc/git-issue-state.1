@@ -1,0 +1,78 @@
+.TH GIT\-ISSUE\-STATE 1 "2026-02-07" "git-issue 0.5.0" "Git Issue Manual"
+.SH NAME
+git\-issue\-state \- change the state of an issue
+.SH SYNOPSIS
+.B git issue state
+.I <issue-id>
+.RI [ options ]
+.SH DESCRIPTION
+Change the state of an issue.
+The state change is recorded as a new commit with a
+.B State:
+trailer.
+Additional metadata such as fixing commit, release version,
+and close reason can be attached.
+.SH OPTIONS
+.TP
+.B \-\-open
+Set the state to
+.BR open .
+.TP
+.B \-\-close
+Set the state to
+.BR closed .
+.TP
+.BI \-\-state " " <value>
+Set the state to a custom value.
+.TP
+.BR \-m ", " \-\-message " " \fI<text>\fR
+Add a message with the state change.
+.TP
+.BI \-\-fixed\-by " " <sha>
+Record the commit SHA that fixes this issue.
+Stored as a
+.B Fixed\-By:
+trailer.
+.TP
+.BI \-\-release " " <version>
+Record the release version.
+Stored as a
+.B Release:
+trailer.
+.TP
+.BI \-\-reason " " <reason>
+Reason for closing:
+.BR duplicate ", " wontfix ", " invalid ", " completed .
+Stored as a
+.B Reason:
+trailer.
+.TP
+.BR \-h ", " \-\-help
+Show usage information.
+.SH EXAMPLES
+Close an issue:
+.RS
+.nf
+$ git issue state a1b2c3d --close
+.fi
+.RE
+.PP
+Close with details:
+.RS
+.nf
+$ git issue state a1b2c3d --close \\
+    --fixed-by abc1234 --release v1.2.0 \\
+    --reason completed -m "Verified in staging"
+.fi
+.RE
+.PP
+Reopen an issue:
+.RS
+.nf
+$ git issue state a1b2c3d --open -m "Regression found"
+.fi
+.RE
+.SH SEE ALSO
+.BR git\-issue (1),
+.BR git\-issue\-edit (1),
+.BR git\-issue\-show (1)

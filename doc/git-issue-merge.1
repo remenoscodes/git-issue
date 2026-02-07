@@ -1,0 +1,62 @@
+.TH GIT\-ISSUE\-MERGE 1 "2026-02-07" "git-issue 0.5.0" "Git Issue Manual"
+.SH NAME
+git\-issue\-merge \- merge issues from a remote
+.SH SYNOPSIS
+.B git issue merge
+.I <remote>
+.RI [ options ]
+.SH DESCRIPTION
+Fetch and merge issues from a remote repository.
+Issues are fetched into a staging namespace under
+.BI refs/remotes/ <remote> /issues/
+and then merged into local
+.BR refs/issues/ .
+.PP
+Three merge outcomes are possible:
+.IP \(bu 2
+.B New issue:
+the remote has an issue not present locally.
+The ref is created locally.
+.IP \(bu 2
+.B Fast-forward:
+the local ref is an ancestor of the remote.
+The local ref is updated.
+.IP \(bu 2
+.B Diverged:
+both sides have new commits.
+A merge commit with two parents is created, resolving metadata
+using field-specific strategies (last-writer-wins for scalars,
+three-way set merge for labels).
+.PP
+Remote tracking refs are cleaned up after a successful merge unless
+.B \-\-check
+is used.
+.SH OPTIONS
+.TP
+.B \-\-check
+Detect divergences without merging.
+Shows what would happen but makes no changes.
+.TP
+.B \-\-no\-fetch
+Skip the fetch step and use existing remote tracking refs.
+.TP
+.BR \-h ", " \-\-help
+Show usage information.
+.SH EXAMPLES
+Merge issues from a remote:
+.RS
+.nf
+$ git issue merge origin
+.fi
+.RE
+.PP
+Check for divergences without merging:
+.RS
+.nf
+$ git issue merge upstream --check
+.fi
+.RE
+.SH SEE ALSO
+.BR git\-issue (1),
+.BR git\-issue\-init (1),
+.BR git\-fetch (1)
