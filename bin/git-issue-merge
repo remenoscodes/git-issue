@@ -1,0 +1,347 @@
+#!/bin/sh
+#
+# git-issue-merge - Merge issues from a remote
+#
+
+set -e
+
+. "$(dirname "$0")/git-issue-lib"
+
+usage() {
+	cat <<EOF
+usage: git issue merge <remote> [options]
+
+Fetch and merge issues from a remote repository.
+
+Options:
+   --check       Detect divergences without merging
+   --no-fetch    Skip fetch, use existing remote tracking refs
+   -h, --help    Show this help
+EOF
+	exit 1
+}
+
+remote=""
+check_only=0
+do_fetch=1
+
+while test $# -gt 0
+do
+	case "$1" in
+		--check)
+			check_only=1
+			shift
+			;;
+		--no-fetch)
+			do_fetch=0
+			shift
+			;;
+		-h|--help)
+			usage
+			;;
+		--)
+			shift
+			break
+			;;
+		-*)
+			echo "error: unknown option '$1'" >&2
+			usage
+			;;
+		*)
+			if test -z "$remote"
+			then
+				remote="$1"
+			fi
+			shift
+			;;
+	esac
+done
+
+if test -z "$remote"
+then
+	echo "error: remote name is required" >&2
+	usage
+fi
+
+# Verify we are inside a git repository
+git rev-parse --git-dir >/dev/null 2>&1 || {
+	echo "fatal: not a git repository" >&2
+	exit 128
+}
+
+# Fetch remote issues into staging namespace
+if test "$do_fetch" -eq 1
+then
+	git fetch "$remote" "+refs/issues/*:refs/remotes/$remote/issues/*" 2>/dev/null || {
+		echo "error: failed to fetch issues from '$remote'" >&2
+		exit 1
+	}
+fi
+
+# Check that remote tracking refs exist
+remote_count="$(git for-each-ref --count=1 --format='x' "refs/remotes/$remote/issues/" | wc -l | tr -d ' ')"
+if test "$remote_count" -eq 0
+then
+	printf 'No issues found on remote '%s'.\n' "$remote"
+	exit 0
+fi
+
+empty_tree="$(git hash-object -t tree /dev/null)"
+
+created=0
+fast_forwarded=0
+merged=0
+up_to_date=0
+diverged=0
+
+refs_file="$(mktemp)"
+tmpfile="$(mktemp)"
+trap 'rm -f "$refs_file" "$tmpfile"' EXIT
+
+git for-each-ref --format='%(refname)' "refs/remotes/$remote/issues/" > "$refs_file"
+
+while IFS= read -r remote_ref
+do
+	uuid="${remote_ref#refs/remotes/$remote/issues/}"
+	short_id="$(printf '%s' "$uuid" | cut -c1-7)"
+	local_ref="refs/issues/$uuid"
+	remote_head="$(git rev-parse "$remote_ref")"
+
+	# Check if local ref exists
+	if ! git rev-parse --verify "$local_ref" >/dev/null 2>&1
+	then
+		# New issue from remote
+		if test "$check_only" -eq 1
+		then
+			root="$(git rev-list --max-parents=0 "$remote_ref")"
+			title="$(git log -1 --format='%s' "$root")"
+			printf '[new] %s: %s\n' "$short_id" "$title"
+		else
+			git update-ref "$local_ref" "$remote_head"
+			root="$(git rev-list --max-parents=0 "$local_ref")"
+			title="$(git log -1 --format='%s' "$root")"
+			printf 'Created %s: %s\n' "$short_id" "$title"
+			created=$((created + 1))
+		fi
+		continue
+	fi
+
+	local_head="$(git rev-parse "$local_ref")"
+
+	# Same commit = up to date
+	if test "$local_head" = "$remote_head"
+	then
+		up_to_date=$((up_to_date + 1))
+		continue
+	fi
+
+	# Check if fast-forward is possible
+	if git merge-base --is-ancestor "$local_head" "$remote_head"
+	then
+		# Local is behind remote, fast-forward
+		if test "$check_only" -eq 1
+		then
+			printf '[fast-forward] %s\n' "$short_id"
+		else
+			git update-ref "$local_ref" "$remote_head" "$local_head"
+			printf 'Fast-forwarded %s\n' "$short_id"
+			fast_forwarded=$((fast_forwarded + 1))
+		fi
+		continue
+	fi
+
+	if git merge-base --is-ancestor "$remote_head" "$local_head"
+	then
+		# Remote is behind local, nothing to do
+		up_to_date=$((up_to_date + 1))
+		continue
+	fi
+
+	# Diverged — need real merge
+	base="$(git merge-base "$local_head" "$remote_head")"
+	base_short="$(printf '%s' "$base" | cut -c1-7)"
+
+	if test "$check_only" -eq 1
+	then
+		printf '[diverged] %s (base: %s)\n' "$short_id" "$base_short"
+		diverged=$((diverged + 1))
+		continue
+	fi
+
+	# === Resolve divergent issue merge ===
+
+	# Helper: get most recent trailer value from a ref's chain
+	get_trailer_val() {
+		git log --format="%(trailers:key=$1,valueonly)" "$2" | \
+			sed '/^$/d' | sed 's/^[[:space:]]*//' | head -1
+	}
+
+	# Get metadata from base, local, remote
+	base_state="$(get_trailer_val State "$base")"
+	local_state="$(get_trailer_val State "$local_ref")"
+	remote_state="$(get_trailer_val State "$remote_ref")"
+
+	base_labels="$(get_trailer_val Labels "$base")"
+	local_labels="$(get_trailer_val Labels "$local_ref")"
+	remote_labels="$(get_trailer_val Labels "$remote_ref")"
+
+	base_assignee="$(get_trailer_val Assignee "$base")"
+	local_assignee="$(get_trailer_val Assignee "$local_ref")"
+	remote_assignee="$(get_trailer_val Assignee "$remote_ref")"
+
+	base_priority="$(get_trailer_val Priority "$base")"
+	local_priority="$(get_trailer_val Priority "$local_ref")"
+	remote_priority="$(get_trailer_val Priority "$remote_ref")"
+
+	base_milestone="$(get_trailer_val Milestone "$base")"
+	local_milestone="$(get_trailer_val Milestone "$local_ref")"
+	remote_milestone="$(get_trailer_val Milestone "$remote_ref")"
+
+	# --- LWW resolver for scalar fields ---
+	# If both sides changed to different values, use tip commit timestamp
+	resolve_scalar() {
+		_base_val="$1"
+		_local_val="$2"
+		_remote_val="$3"
+
+		# Same value on both sides
+		if test "$_local_val" = "$_remote_val"
+		then
+			printf '%s' "$_local_val"
+			return
+		fi
+
+		# Only one side changed
+		if test "$_local_val" = "$_base_val"
+		then
+			printf '%s' "$_remote_val"
+			return
+		fi
+		if test "$_remote_val" = "$_base_val"
+		then
+			printf '%s' "$_local_val"
+			return
+		fi
+
+		# Both changed — LWW by tip commit timestamp
+		_local_ts="$(git log -1 --format='%at' "$local_head")"
+		_remote_ts="$(git log -1 --format='%at' "$remote_head")"
+
+		if test "$_remote_ts" -gt "$_local_ts"
+		then
+			printf '%s' "$_remote_val"
+		elif test "$_local_ts" -gt "$_remote_ts"
+		then
+			printf '%s' "$_local_val"
+		else
+			# Equal timestamps: lexicographically greater SHA wins
+			if test "$local_head" '>' "$remote_head" 2>/dev/null
+			then
+				printf '%s' "$_local_val"
+			else
+				printf '%s' "$_remote_val"
+			fi
+		fi
+	}
+
+	# Resolve scalar fields
+	resolved_state="$(resolve_scalar "$base_state" "$local_state" "$remote_state")"
+	resolved_assignee="$(resolve_scalar "$base_assignee" "$local_assignee" "$remote_assignee")"
+	resolved_priority="$(resolve_scalar "$base_priority" "$local_priority" "$remote_priority")"
+	resolved_milestone="$(resolve_scalar "$base_milestone" "$local_milestone" "$remote_milestone")"
+
+	# --- Three-way set merge for labels ---
+	_lb="$(mktemp)"
+	_ll="$(mktemp)"
+	_lr="$(mktemp)"
+	_la="$(mktemp)"
+	_lar="$(mktemp)"
+	_lnr="$(mktemp)"
+	_lc="$(mktemp)"
+	_lres="$(mktemp)"
+
+	printf '%s' "$base_labels" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed '/^$/d' | sort -u > "$_lb"
+	printf '%s' "$local_labels" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed '/^$/d' | sort -u > "$_ll"
+	printf '%s' "$remote_labels" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed '/^$/d' | sort -u > "$_lr"
+
+	# Additions from each side
+	comm -23 "$_ll" "$_lb" > "${_la}.l"
+	comm -23 "$_lr" "$_lb" > "${_la}.r"
+	sort -u "${_la}.l" "${_la}.r" > "$_la"
+
+	# Removals from each side
+	comm -23 "$_lb" "$_ll" > "${_lar}.l"
+	comm -23 "$_lb" "$_lr" > "${_lar}.r"
+	sort -u "${_lar}.l" "${_lar}.r" > "$_lar"
+
+	# Net removals = removals that are not also additions (addition wins)
+	comm -23 "$_lar" "$_la" > "$_lnr"
+
+	# Combined = base + all additions
+	sort -u "$_lb" "$_la" > "$_lc"
+
+	# Result = combined - net removals
+	comm -23 "$_lc" "$_lnr" > "$_lres"
+
+	resolved_labels="$(paste -sd',' "$_lres" 2>/dev/null | sed 's/,/, /g')"
+
+	rm -f "$_lb" "$_ll" "$_lr" "$_la" "${_la}.l" "${_la}.r" \
+		"$_lar" "${_lar}.l" "${_lar}.r" "$_lnr" "$_lc" "$_lres"
+
+	# --- Build merge commit ---
+	printf 'Merge issue from %s\n' "$remote" > "$tmpfile"
+
+	if test -n "$resolved_state"
+	then
+		git interpret-trailers --in-place --trailer "State: $resolved_state" "$tmpfile"
+	fi
+
+	if test -n "$resolved_labels"
+	then
+		git interpret-trailers --in-place --trailer "Labels: $resolved_labels" "$tmpfile"
+	fi
+
+	if test -n "$resolved_assignee"
+	then
+		git interpret-trailers --in-place --trailer "Assignee: $resolved_assignee" "$tmpfile"
+	fi
+
+	if test -n "$resolved_priority"
+	then
+		git interpret-trailers --in-place --trailer "Priority: $resolved_priority" "$tmpfile"
+	fi
+
+	if test -n "$resolved_milestone"
+	then
+		git interpret-trailers --in-place --trailer "Milestone: $resolved_milestone" "$tmpfile"
+	fi
+
+	# Create merge commit with two parents
+	merge_commit="$(git commit-tree "$empty_tree" \
+		-p "$local_head" -p "$remote_head" < "$tmpfile")"
+
+	git update-ref "$local_ref" "$merge_commit" "$local_head"
+
+	merged=$((merged + 1))
+	printf 'Merged %s (diverged at %s)\n' "$short_id" "$base_short"
+done < "$refs_file"
+
+# Clean up remote tracking refs (unless --check)
+if test "$check_only" -eq 0 && test "$do_fetch" -eq 1
+then
+	git for-each-ref --format='%(refname)' "refs/remotes/$remote/issues/" | \
+		while IFS= read -r ref
+		do
+			git update-ref -d "$ref"
+		done
+fi
+
+# Print summary
+if test "$check_only" -eq 1
+then
+	printf 'Check complete: %d new, %d fast-forward, %d diverged, %d up-to-date\n' \
+		"$created" "$fast_forwarded" "$diverged" "$up_to_date"
+else
+	printf 'Merge complete: %d created, %d fast-forwarded, %d merged, %d up-to-date\n' \
+		"$created" "$fast_forwarded" "$merged" "$up_to_date"
+fi

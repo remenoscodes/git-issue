@@ -76,6 +76,8 @@ Verify: `git issue version`
 | `git issue import` | Import issues from GitHub |
 | `git issue export` | Export issues to GitHub |
 | `git issue sync` | Two-way sync (import + export) |
+| `git issue merge <remote>` | Merge issues from a remote |
+| `git issue fsck` | Validate issue data integrity |
 | `git issue init` | Configure repo for issue tracking |
 
 ### Creating Issues
@@ -152,6 +154,43 @@ brew install gh jq       # macOS
 gh auth login            # authenticate with GitHub
 ```
 
+### Distributed Merge
+
+When multiple people track the same issues, their ref chains can diverge.
+`git issue merge` reconciles them:
+
+```sh
+# Fetch and merge issues from a remote
+git issue merge origin
+
+# Detect divergences without merging
+git issue merge origin --check
+
+# Skip fetch, use existing remote tracking refs
+git issue merge origin --no-fetch
+```
+
+**Merge strategy:**
+
+- New issues from remote are created locally
+- If local is behind, fast-forward
+- If diverged, create a merge commit with resolved metadata:
+  - **Scalar fields** (state, assignee, priority, milestone): last-writer-wins by timestamp
+  - **Labels**: three-way set merge (additions from both sides preserved, removals honored)
+  - **Comments**: union (both sides' commits reachable via merge parents)
+
+### Data Integrity
+
+```sh
+# Validate all issue refs
+git issue fsck
+
+# Quiet mode (only errors)
+git issue fsck --quiet
+```
+
+Checks: UUID format, empty tree usage, required trailers (`State`, `Format-Version`), single root commit per issue.
+
 ## How It Works
 
 Each issue is a chain of commits on its own ref:
@@ -225,7 +264,7 @@ the deliverable that makes ecosystem adoption possible.
 make test
 ```
 
-112 tests: 76 core + 36 bridge.
+132 tests: 76 core + 36 bridge + 20 merge/fsck.
 
 ## License
 

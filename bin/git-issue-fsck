@@ -1,0 +1,139 @@
+#!/bin/sh
+#
+# git-issue-fsck - Validate issue data integrity
+#
+
+set -e
+
+. "$(dirname "$0")/git-issue-lib"
+
+usage() {
+	cat <<EOF
+usage: git issue fsck [options]
+
+Validates all issue refs for data integrity.
+
+Checks:
+   - Ref names match UUID format
+   - All commits use the empty tree
+   - Root commits have State: and Format-Version: trailers
+   - Commit chain is well-formed (single root)
+
+Options:
+   --quiet    Only show errors (no OK messages)
+   -h, --help Show this help
+EOF
+	exit 1
+}
+
+quiet=0
+
+while test $# -gt 0
+do
+	case "$1" in
+		--quiet)
+			quiet=1
+			shift
+			;;
+		-h|--help)
+			usage
+			;;
+		*)
+			echo "error: unknown option '$1'" >&2
+			usage
+			;;
+	esac
+done
+
+# Verify we are inside a git repository
+git rev-parse --git-dir >/dev/null 2>&1 || {
+	echo "fatal: not a git repository" >&2
+	exit 128
+}
+
+errors=0
+checked=0
+empty_tree="$(git hash-object -t tree /dev/null)"
+
+refs_file="$(mktemp)"
+trap 'rm -f "$refs_file"' EXIT
+
+git for-each-ref --format='%(refname)' refs/issues/ > "$refs_file"
+
+while IFS= read -r ref
+do
+	uuid="${ref#refs/issues/}"
+	short_id="$(printf '%s' "$uuid" | cut -c1-7)"
+	checked=$((checked + 1))
+	issue_ok=1
+
+	# Check UUID format
+	case "$uuid" in
+		????????-????-????-????-????????????)
+			;;
+		*)
+			printf 'error: %s: invalid UUID format: %s\n' "$short_id" "$uuid" >&2
+			errors=$((errors + 1))
+			issue_ok=0
+			;;
+	esac
+
+	# Check all commits use empty tree
+	for commit in $(git rev-list "$ref")
+	do
+		tree="$(git log -1 --format='%T' "$commit")"
+		if test "$tree" != "$empty_tree"
+		then
+			printf 'error: %s: commit %s does not use empty tree\n' \
+				"$short_id" "$(printf '%s' "$commit" | cut -c1-7)" >&2
+			errors=$((errors + 1))
+			issue_ok=0
+		fi
+	done
+
+	# Check single root commit
+	root_count="$(git rev-list --max-parents=0 "$ref" | wc -l | tr -d ' ')"
+	if test "$root_count" -ne 1
+	then
+		printf 'error: %s: expected 1 root commit, found %d\n' "$short_id" "$root_count" >&2
+		errors=$((errors + 1))
+		issue_ok=0
+	fi
+
+	# Check root commit has required trailers
+	root="$(git rev-list --max-parents=0 "$ref" | head -1)"
+
+	state="$(git log -1 --format='%(trailers:key=State,valueonly)' "$root" | sed '/^$/d')"
+	state="$(printf '%s' "$state" | sed 's/^[[:space:]]*//')"
+	if test -z "$state"
+	then
+		printf 'error: %s: root commit missing State: trailer\n' "$short_id" >&2
+		errors=$((errors + 1))
+		issue_ok=0
+	fi
+
+	fv="$(git log -1 --format='%(trailers:key=Format-Version,valueonly)' "$root" | sed '/^$/d')"
+	fv="$(printf '%s' "$fv" | sed 's/^[[:space:]]*//')"
+	if test -z "$fv"
+	then
+		printf 'error: %s: root commit missing Format-Version: trailer\n' "$short_id" >&2
+		errors=$((errors + 1))
+		issue_ok=0
+	fi
+
+	if test "$issue_ok" -eq 1 && test "$quiet" -eq 0
+	then
+		printf 'ok %s\n' "$short_id"
+	fi
+done < "$refs_file"
+
+if test "$checked" -eq 0
+then
+	printf 'No issues found.\n'
+elif test "$errors" -eq 0
+then
+	printf 'Checked %d issues, no errors found.\n' "$checked"
+else
+	printf 'Checked %d issues, %d errors found.\n' "$checked" "$errors" >&2
+	exit 1
+fi

@@ -7,7 +7,7 @@
 
 set -e
 
-VERSION="0.3.0"
+VERSION="0.4.0"
 
 usage() {
 	cat <<EOF
@@ -23,6 +23,8 @@ Commands:
    import   Import issues from an external provider
    export   Export issues to an external provider
    sync     Two-way sync (import + export)
+   merge    Merge issues from a remote
+   fsck     Validate issue data integrity
    init     Configure the current repo for issue tracking
    version  Print version information
 
@@ -35,7 +37,7 @@ EOF
 ISSUE_BIN_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 case "${1:-}" in
-	create|ls|show|comment|edit|state|import|export|sync|init)
+	create|ls|show|comment|edit|state|import|export|sync|merge|fsck|init)
 		cmd="$1"
 		shift
 		exec "$ISSUE_BIN_DIR/git-issue-$cmd" "$@"

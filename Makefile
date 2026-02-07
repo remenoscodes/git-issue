@@ -21,6 +21,7 @@ uninstall:
 test:
 	@sh t/test-issue.sh
 	@sh t/test-bridge.sh
+	@sh t/test-merge.sh
 
 clean:
 	rm -rf t/tmp-*
