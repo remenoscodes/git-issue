@@ -1,0 +1,17 @@
+{
+  "number": 2,
+  "title": "Update README with install instructions",
+  "body": "The README is missing installation steps.",
+  "state": "closed",
+  "created_at": "2025-03-10T08:00:00Z",
+  "updated_at": "2025-03-12T16:45:00Z",
+  "closed_at": "2025-03-12T16:45:00Z",
+  "user": {
+    "login": "charlie"
+  },
+  "labels": [
+    {"name": "docs"}
+  ],
+  "assignee": null,
+  "milestone": null
+}

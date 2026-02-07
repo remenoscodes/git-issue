@@ -1,0 +1,332 @@
+#!/bin/sh
+#
+# git-issue-import - Import issues from an external provider
+#
+
+set -e
+
+usage() {
+	cat <<EOF
+usage: git issue import github:<owner>/<repo> [options]
+
+Options:
+   --state <state>   Filter by state: open, closed, all (default: open)
+   --dry-run         Show what would be imported without importing
+   -h, --help        Show this help
+EOF
+	exit 1
+}
+
+provider=""
+state_filter="open"
+dry_run=0
+
+while test $# -gt 0
+do
+	case "$1" in
+		--state)
+			test $# -ge 2 || { echo "error: --state requires a value" >&2; exit 1; }
+			case "$2" in
+				open|closed|all) ;;
+				*) echo "error: --state must be open, closed, or all" >&2; exit 1 ;;
+			esac
+			state_filter="$2"
+			shift 2
+			;;
+		--dry-run)
+			dry_run=1
+			shift
+			;;
+		-h|--help)
+			usage
+			;;
+		--)
+			shift
+			break
+			;;
+		-*)
+			echo "error: unknown option '$1'" >&2
+			usage
+			;;
+		*)
+			if test -z "$provider"
+			then
+				provider="$1"
+			fi
+			shift
+			;;
+	esac
+done
+
+if test -z "$provider"
+then
+	echo "error: provider is required (e.g., github:owner/repo)" >&2
+	usage
+fi
+
+# Parse provider string
+case "$provider" in
+	github:*/*)
+		gh_repo="${provider#github:}"
+		gh_owner="${gh_repo%/*}"
+		gh_reponame="${gh_repo#*/}"
+		;;
+	*)
+		echo "error: invalid provider string '$provider'" >&2
+		echo "       expected format: github:<owner>/<repo>" >&2
+		exit 1
+		;;
+esac
+
+# Verify we are inside a git repository
+git rev-parse --git-dir >/dev/null 2>&1 || {
+	echo "fatal: not a git repository" >&2
+	exit 128
+}
+
+# Check prerequisites
+command -v gh >/dev/null 2>&1 || {
+	echo "error: 'gh' (GitHub CLI) is required but not found" >&2
+	echo "       install: https://cli.github.com/" >&2
+	exit 1
+}
+
+command -v jq >/dev/null 2>&1 || {
+	echo "error: 'jq' is required but not found" >&2
+	echo "       install: https://stedolan.github.io/jq/" >&2
+	exit 1
+}
+
+# Check gh auth
+gh auth status >/dev/null 2>&1 || {
+	echo "error: 'gh' is not authenticated. Run 'gh auth login' first." >&2
+	exit 1
+}
+
+# Build Provider-ID index from existing issues
+provider_index="$(mktemp)"
+trap 'rm -f "$provider_index" "$tmpfile" "$user_cache_dir"/*; rmdir "$user_cache_dir" 2>/dev/null; true' EXIT
+
+# Cache directory for user lookups
+user_cache_dir="$(mktemp -d)"
+
+git for-each-ref --format='%(refname)' refs/issues/ | while IFS= read -r ref
+do
+	# Walk all commits in the chain looking for Provider-ID
+	git log --format='%(trailers:key=Provider-ID,valueonly)' "$ref" | \
+		sed '/^$/d' | sed 's/^[[:space:]]*//' | while IFS= read -r pid
+	do
+		test -n "$pid" && printf '%s\n' "$pid"
+	done
+done > "$provider_index"
+
+# Build API state parameter
+case "$state_filter" in
+	open)   api_state="state=open" ;;
+	closed) api_state="state=closed" ;;
+	all)    api_state="state=all" ;;
+esac
+
+# Fetch issues list (paginated)
+issues_json="$(gh api --paginate "/repos/$gh_owner/$gh_reponame/issues?$api_state&per_page=100" 2>&1)" || {
+	echo "error: failed to fetch issues from github:$gh_owner/$gh_reponame" >&2
+	echo "       $issues_json" >&2
+	exit 1
+}
+
+# Filter out pull requests and get issue numbers
+issue_numbers="$(printf '%s' "$issues_json" | jq -r '.[] | select(.pull_request == null) | .number')"
+
+imported=0
+skipped=0
+
+# Get the empty tree SHA
+empty_tree="$(git hash-object -t tree /dev/null)"
+
+# Helper: resolve GitHub user to name and email
+resolve_user() {
+	login="$1"
+	cache_file="$user_cache_dir/$login"
+
+	if test -f "$cache_file"
+	then
+		cat "$cache_file"
+		return
+	fi
+
+	user_json="$(gh api "/users/$login" 2>/dev/null || echo '{}')"
+	name="$(printf '%s' "$user_json" | jq -r '.name // empty')"
+	email="$(printf '%s' "$user_json" | jq -r '.email // empty')"
+
+	if test -z "$name"
+	then
+		name="$login"
+	fi
+
+	if test -z "$email"
+	then
+		email="${login}@users.noreply.github.com"
+	fi
+
+	printf '%s\n%s\n' "$name" "$email" > "$cache_file"
+	cat "$cache_file"
+}
+
+tmpfile="$(mktemp)"
+
+for number in $issue_numbers
+do
+	provider_id="github:$gh_owner/$gh_reponame#$number"
+
+	# Check if already imported
+	if grep -qF "$provider_id" "$provider_index" 2>/dev/null
+	then
+		skipped=$((skipped + 1))
+		continue
+	fi
+
+	# Fetch full issue data
+	issue_json="$(gh api "/repos/$gh_owner/$gh_reponame/issues/$number")"
+
+	title="$(printf '%s' "$issue_json" | jq -r '.title')"
+	body="$(printf '%s' "$issue_json" | jq -r '.body // ""')"
+	issue_state="$(printf '%s' "$issue_json" | jq -r '.state')"
+	created_at="$(printf '%s' "$issue_json" | jq -r '.created_at')"
+	author_login="$(printf '%s' "$issue_json" | jq -r '.user.login')"
+
+	# Labels as comma-separated
+	labels="$(printf '%s' "$issue_json" | jq -r '[.labels[].name] | join(", ")')"
+
+	# Assignee
+	assignee_login="$(printf '%s' "$issue_json" | jq -r '.assignee.login // empty')"
+
+	# Milestone
+	milestone="$(printf '%s' "$issue_json" | jq -r '.milestone.title // empty')"
+
+	if test "$dry_run" -eq 1
+	then
+		printf '[dry-run] Would import #%s: %s\n' "$number" "$title"
+		imported=$((imported + 1))
+		continue
+	fi
+
+	# Resolve author
+	author_info="$(resolve_user "$author_login")"
+	author_name="$(printf '%s' "$author_info" | head -1)"
+	author_email="$(printf '%s' "$author_info" | tail -1)"
+
+	# Generate UUID
+	if command -v uuidgen >/dev/null 2>&1
+	then
+		uuid="$(uuidgen | tr '[:upper:]' '[:lower:]')"
+	elif test -r /proc/sys/kernel/random/uuid
+	then
+		uuid="$(cat /proc/sys/kernel/random/uuid)"
+	else
+		uuid="$(od -x -N 16 /dev/urandom | head -1 | awk '{
+			printf "%s%s-%s-%s-%s-%s%s%s\n",
+				$2,$3,$4,
+				substr($5,1,4),
+				substr($5,5,4),
+				$6,$7,$8
+		}')"
+	fi
+
+	short_id="$(printf '%s' "$uuid" | cut -c1-7)"
+
+	# Build root commit message
+	msg="$title"
+	if test -n "$body"
+	then
+		msg="$msg
+
+$body"
+	fi
+
+	printf '%s\n' "$msg" > "$tmpfile"
+
+	# Add trailers
+	git interpret-trailers --in-place --trailer "State: open" "$tmpfile"
+
+	if test -n "$labels"
+	then
+		git interpret-trailers --in-place --trailer "Labels: $labels" "$tmpfile"
+	fi
+
+	if test -n "$assignee_login"
+	then
+		assignee_info="$(resolve_user "$assignee_login")"
+		assignee_email="$(printf '%s' "$assignee_info" | tail -1)"
+		git interpret-trailers --in-place --trailer "Assignee: $assignee_email" "$tmpfile"
+	fi
+
+	if test -n "$milestone"
+	then
+		git interpret-trailers --in-place --trailer "Milestone: $milestone" "$tmpfile"
+	fi
+
+	git interpret-trailers --in-place --trailer "Provider-ID: $provider_id" "$tmpfile"
+	git interpret-trailers --in-place --trailer "Format-Version: 1" "$tmpfile"
+
+	# Create root commit with original author and date
+	commit="$(GIT_AUTHOR_NAME="$author_name" \
+		GIT_AUTHOR_EMAIL="$author_email" \
+		GIT_AUTHOR_DATE="$created_at" \
+		git commit-tree "$empty_tree" < "$tmpfile")"
+
+	# Create the ref
+	git update-ref "refs/issues/$uuid" "$commit"
+
+	# Fetch and import comments
+	comments_json="$(gh api --paginate "/repos/$gh_owner/$gh_reponame/issues/$number/comments?per_page=100" 2>/dev/null || echo '[]')"
+	comment_count="$(printf '%s' "$comments_json" | jq '. | length')"
+
+	parent="$commit"
+	i=0
+	while test "$i" -lt "$comment_count"
+	do
+		comment_body="$(printf '%s' "$comments_json" | jq -r ".[$i].body // \"\"")"
+		comment_date="$(printf '%s' "$comments_json" | jq -r ".[$i].created_at")"
+		comment_login="$(printf '%s' "$comments_json" | jq -r ".[$i].user.login")"
+
+		comment_info="$(resolve_user "$comment_login")"
+		comment_name="$(printf '%s' "$comment_info" | head -1)"
+		comment_email="$(printf '%s' "$comment_info" | tail -1)"
+
+		printf '%s\n' "$comment_body" > "$tmpfile"
+
+		new_commit="$(GIT_AUTHOR_NAME="$comment_name" \
+			GIT_AUTHOR_EMAIL="$comment_email" \
+			GIT_AUTHOR_DATE="$comment_date" \
+			git commit-tree "$empty_tree" -p "$parent" < "$tmpfile")"
+
+		parent="$new_commit"
+		i=$((i + 1))
+	done
+
+	# If issue is closed, add a state-change commit
+	if test "$issue_state" = "closed"
+	then
+		closed_at="$(printf '%s' "$issue_json" | jq -r '.closed_at // .updated_at')"
+		printf '%s\n' "Close issue" > "$tmpfile"
+		git interpret-trailers --in-place --trailer "State: closed" "$tmpfile"
+
+		new_commit="$(GIT_AUTHOR_NAME="$author_name" \
+			GIT_AUTHOR_EMAIL="$author_email" \
+			GIT_AUTHOR_DATE="$closed_at" \
+			git commit-tree "$empty_tree" -p "$parent" < "$tmpfile")"
+
+		parent="$new_commit"
+	fi
+
+	# Update ref to final commit in chain
+	if test "$parent" != "$commit"
+	then
+		git update-ref "refs/issues/$uuid" "$parent" "$commit"
+	fi
+
+	imported=$((imported + 1))
+	printf 'Imported #%s as %s: %s\n' "$number" "$short_id" "$title"
+done
+
+printf 'Imported %d issues (%d skipped)\n' "$imported" "$skipped"

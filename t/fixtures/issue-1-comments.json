@@ -1,0 +1,18 @@
+[
+  {
+    "id": 101,
+    "body": "I can reproduce this on Chrome 120.",
+    "created_at": "2025-03-15T12:00:00Z",
+    "user": {
+      "login": "bob"
+    }
+  },
+  {
+    "id": 102,
+    "body": "The fix is in PR #4. Needs review.",
+    "created_at": "2025-03-16T09:30:00Z",
+    "user": {
+      "login": "alice"
+    }
+  }
+]

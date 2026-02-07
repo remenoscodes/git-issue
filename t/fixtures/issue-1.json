@@ -1,0 +1,21 @@
+{
+  "number": 1,
+  "title": "Login page crashes on submit",
+  "body": "When clicking submit on the login form, the page crashes with a TypeError.\n\nSteps to reproduce:\n1. Go to /login\n2. Enter credentials\n3. Click submit",
+  "state": "open",
+  "created_at": "2025-03-15T10:30:00Z",
+  "updated_at": "2025-03-16T14:20:00Z",
+  "user": {
+    "login": "alice"
+  },
+  "labels": [
+    {"name": "bug"},
+    {"name": "auth"}
+  ],
+  "assignee": {
+    "login": "bob"
+  },
+  "milestone": {
+    "title": "v1.0"
+  }
+}

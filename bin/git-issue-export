@@ -1,0 +1,237 @@
+#!/bin/sh
+#
+# git-issue-export - Export local issues to an external provider
+#
+
+set -e
+
+usage() {
+	cat <<EOF
+usage: git issue export github:<owner>/<repo> [options]
+
+Options:
+   --dry-run         Show what would be exported without exporting
+   -h, --help        Show this help
+EOF
+	exit 1
+}
+
+provider=""
+dry_run=0
+
+while test $# -gt 0
+do
+	case "$1" in
+		--dry-run)
+			dry_run=1
+			shift
+			;;
+		-h|--help)
+			usage
+			;;
+		--)
+			shift
+			break
+			;;
+		-*)
+			echo "error: unknown option '$1'" >&2
+			usage
+			;;
+		*)
+			if test -z "$provider"
+			then
+				provider="$1"
+			fi
+			shift
+			;;
+	esac
+done
+
+if test -z "$provider"
+then
+	echo "error: provider is required (e.g., github:owner/repo)" >&2
+	usage
+fi
+
+# Parse provider string
+case "$provider" in
+	github:*/*)
+		gh_repo="${provider#github:}"
+		gh_owner="${gh_repo%/*}"
+		gh_reponame="${gh_repo#*/}"
+		;;
+	*)
+		echo "error: invalid provider string '$provider'" >&2
+		echo "       expected format: github:<owner>/<repo>" >&2
+		exit 1
+		;;
+esac
+
+# Verify we are inside a git repository
+git rev-parse --git-dir >/dev/null 2>&1 || {
+	echo "fatal: not a git repository" >&2
+	exit 128
+}
+
+# Check prerequisites
+command -v gh >/dev/null 2>&1 || {
+	echo "error: 'gh' (GitHub CLI) is required but not found" >&2
+	echo "       install: https://cli.github.com/" >&2
+	exit 1
+}
+
+command -v jq >/dev/null 2>&1 || {
+	echo "error: 'jq' is required but not found" >&2
+	echo "       install: https://stedolan.github.io/jq/" >&2
+	exit 1
+}
+
+# Check gh auth
+gh auth status >/dev/null 2>&1 || {
+	echo "error: 'gh' is not authenticated. Run 'gh auth login' first." >&2
+	exit 1
+}
+
+tmpfile="$(mktemp)"
+trap 'rm -f "$tmpfile"' EXIT
+
+# Get the empty tree SHA
+empty_tree="$(git hash-object -t tree /dev/null)"
+
+exported=0
+skipped=0
+synced=0
+
+target_prefix="github:$gh_owner/$gh_reponame#"
+
+git for-each-ref --format='%(refname)' refs/issues/ | while IFS= read -r ref
+do
+	uuid="${ref#refs/issues/}"
+	short_id="$(printf '%s' "$uuid" | cut -c1-7)"
+
+	# Get root commit
+	root="$(git rev-list --max-parents=0 "$ref")"
+	title="$(git log -1 --format='%s' "$root")"
+
+	# Extract body (strip trailers)
+	body="$(git log -1 --format='%b' "$root" | sed '/^[A-Z][A-Za-z-]*: /d' | sed '/^$/d')"
+
+	# Get current state
+	state="$(git log --format='%(trailers:key=State,valueonly)' "$ref" | sed '/^$/d' | head -1)"
+	state="$(printf '%s' "$state" | sed 's/^[[:space:]]*//')"
+
+	# Get labels
+	labels="$(git log --format='%(trailers:key=Labels,valueonly)' "$ref" | sed '/^$/d' | head -1)"
+	labels="$(printf '%s' "$labels" | sed 's/^[[:space:]]*//')"
+
+	# Check for Provider-ID in any commit in the chain
+	existing_pid=""
+	existing_pid="$(git log --format='%(trailers:key=Provider-ID,valueonly)' "$ref" | \
+		sed '/^$/d' | sed 's/^[[:space:]]*//' | head -1)"
+
+	if test -n "$existing_pid"
+	then
+		# Check if this Provider-ID is for the target repo
+		case "$existing_pid" in
+			"$target_prefix"*)
+				# Already exported to this repo — sync new comments and state
+				issue_number="${existing_pid#$target_prefix}"
+
+				if test "$dry_run" -eq 1
+				then
+					printf '[dry-run] Would sync %s (already exported as #%s)\n' "$short_id" "$issue_number"
+					# Cannot increment synced in subshell, handled by summary
+					continue
+				fi
+
+				# Sync state
+				case "$state" in
+					open)   gh_state="open" ;;
+					closed) gh_state="closed" ;;
+					*)      gh_state="open" ;;
+				esac
+
+				gh api --method PATCH "/repos/$gh_owner/$gh_reponame/issues/$issue_number" \
+					-f state="$gh_state" >/dev/null 2>&1 || true
+
+				printf 'Synced %s with #%s\n' "$short_id" "$issue_number"
+				continue
+				;;
+			*)
+				# Foreign Provider-ID (imported from a different repo), skip
+				printf 'Skipped %s (imported from %s)\n' "$short_id" "$existing_pid"
+				continue
+				;;
+		esac
+	fi
+
+	# No Provider-ID — export as new GitHub issue
+	if test "$dry_run" -eq 1
+	then
+		printf '[dry-run] Would export %s: %s\n' "$short_id" "$title"
+		continue
+	fi
+
+	# Build labels JSON array
+	labels_json="[]"
+	if test -n "$labels"
+	then
+		labels_json="$(printf '%s' "$labels" | jq -R 'split(", ")')"
+	fi
+
+	# Create the issue on GitHub
+	create_response="$(gh api --method POST "/repos/$gh_owner/$gh_reponame/issues" \
+		-f title="$title" \
+		-f body="$body" \
+		--argjson labels "$labels_json" 2>&1)" || {
+		echo "error: failed to create issue on GitHub: $create_response" >&2
+		continue
+	}
+
+	issue_number="$(printf '%s' "$create_response" | jq -r '.number')"
+	provider_id="github:$gh_owner/$gh_reponame#$issue_number"
+
+	# Export comments (skip root, skip state-change-only commits)
+	issue_head="$(git rev-parse "$ref")"
+	commits="$(git rev-list --reverse "$root..$ref")"
+	for cmt in $commits
+	do
+		cmt_body="$(git log -1 --format='%s' "$cmt")"
+		cmt_full="$(git log -1 --format='%b' "$cmt" | sed '/^[A-Z][A-Za-z-]*: /d' | sed '/^$/d')"
+
+		# Skip state-change-only commits (no meaningful comment)
+		case "$cmt_body" in
+			"Close issue"|"Reopen issue"|"Change state to "*)
+				;;
+			*)
+				comment_text="$cmt_body"
+				if test -n "$cmt_full"
+				then
+					comment_text="$comment_text
+
+$cmt_full"
+				fi
+				gh api --method POST "/repos/$gh_owner/$gh_reponame/issues/$issue_number/comments" \
+					-f body="$comment_text" >/dev/null 2>&1 || true
+				;;
+		esac
+	done
+
+	# Sync state if closed
+	if test "$state" = "closed"
+	then
+		gh api --method PATCH "/repos/$gh_owner/$gh_reponame/issues/$issue_number" \
+			-f state="closed" >/dev/null 2>&1 || true
+	fi
+
+	# Record Provider-ID locally by appending a child commit
+	printf '%s\n' "Record export to GitHub #$issue_number" > "$tmpfile"
+	git interpret-trailers --in-place --trailer "Provider-ID: $provider_id" "$tmpfile"
+
+	new_commit="$(git commit-tree "$empty_tree" -p "$issue_head" < "$tmpfile")"
+	git update-ref "$ref" "$new_commit" "$issue_head"
+
+	printf 'Exported %s as #%s: %s\n' "$short_id" "$issue_number" "$title"
+done
+
+# Note: counts from subshell not available here, summary printed per-issue above
