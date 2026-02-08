@@ -87,6 +87,9 @@ jobs:
           git config user.name "Test User"
           git config user.email "test@example.com"
 
+          # Add dummy remote (git-issue init requires a remote)
+          git remote add origin https://example.com/test.git
+
           # Test init command
           git-issue init || exit 1
           echo "✓ git-issue init works"
@@ -144,6 +147,9 @@ jobs:
           git config user.name "Test User"
           git config user.email "test@example.com"
 
+          # Add dummy remote (git-issue init requires a remote)
+          git remote add origin https://example.com/test.git
+
           # Test init
           git-issue init || exit 1
           echo "✓ git-issue init works on macOS"
@@ -166,17 +172,17 @@ jobs:
           ruby -c Formula/git-issue.rb || exit 1
           echo "✓ Formula syntax valid"
 
-      - name: Test formula installation (from local file)
+      - name: Test formula installation (from tap)
         run: |
           # Uninstall if already installed
           brew uninstall git-issue 2>/dev/null || true
 
-          # Install from local formula
-          brew install --build-from-source Formula/git-issue.rb || exit 1
+          # Install from actual tap
+          brew install remenoscodes/git-issue/git-issue || exit 1
 
           # Verify installation
           git-issue version | grep -q "1.0.1" || exit 1
-          echo "✓ Homebrew formula installation works"
+          echo "✓ Homebrew tap installation works"
 
           # Test basic commands
           git-issue --help > /dev/null || exit 1
