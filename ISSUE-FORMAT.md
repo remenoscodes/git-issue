@@ -53,7 +53,44 @@ hosting providers via standard `git push` and `git fetch`.
 
 ---
 
-## 2. Ref Namespace
+## 2. Non-Goals
+
+The following features are explicitly OUT OF SCOPE for this format:
+
+1. **Access Control**: The format does not define authorization models. Any
+   user with write access to the repository can create, modify, or close
+   issues. Access control must be enforced at the Git repository level
+   (filesystem permissions, server-side hooks, hosting platform controls).
+
+2. **Real-Time Synchronization**: Issues are synchronized via standard Git
+   push/fetch operations. There is no real-time event stream, no webhook
+   protocol, and no live collaborative editing. Changes propagate when
+   refs are explicitly pushed or fetched.
+
+3. **Non-Developer Participation**: This format requires Git proficiency.
+   Creating or modifying issues requires command-line Git access and
+   understanding of refs, commits, and SHA identifiers. There is no
+   provision for web-only users or issue creation via email.
+
+4. **Rich Media in v1**: Binary attachments (images, videos, PDFs) are
+   not supported in Format-Version 1. All issue data must be text-based
+   commit messages and trailers. Binary attachments are deferred to a
+   future format version (see Section 12).
+
+5. **Hosting Platform Integration**: The format does not mandate how
+   hosting platforms (GitHub, GitLab, Forgejo) should display or interact
+   with `refs/issues/*`. Platform support is optional and implementation-
+   defined. The format can be used without any platform support.
+
+6. **Guaranteed Conflict-Free Resolution**: While the merge rules
+   (Section 6) provide deterministic conflict resolution, they use
+   heuristics (LWW, three-way set merge) that may not match user intent
+   in all cases. The format does not use CRDTs or Lamport clocks for
+   mathematically proven conflict-free behavior.
+
+---
+
+## 3. Ref Namespace
 
 Issues are stored under the `refs/issues/` namespace:
 
@@ -292,7 +329,74 @@ When comparing labels for merge operations (Section 6.3), implementations
 MUST trim whitespace and compare the resulting strings exactly
 (case-sensitive).
 
-### 4.8 Cross-References
+### 4.8 Formal Grammar (ABNF)
+
+The commit message format can be expressed in Augmented Backus-Naur
+Form (ABNF, RFC 5234):
+
+```abnf
+issue-commit     = root-commit / comment-commit / state-commit / merge-commit
+
+root-commit      = title CRLF CRLF description CRLF CRLF
+                   "State: " state-value CRLF
+                   [optional-trailers]
+                   "Format-Version: 1" CRLF
+
+comment-commit   = comment-subject CRLF CRLF comment-body
+                   [CRLF CRLF state-trailers]
+
+state-commit     = change-subject CRLF CRLF change-body CRLF CRLF
+                   "State: " state-value CRLF
+                   [state-trailers]
+
+merge-commit     = "Merge issue from " remote-name CRLF
+                   [CRLF body]
+                   CRLF CRLF
+                   "State: " state-value CRLF
+                   [merge-trailers]
+
+title            = TEXT-NO-LF  ; max 72 characters recommended
+comment-subject  = TEXT-NO-LF
+change-subject   = TEXT-NO-LF
+comment-body     = *( TEXT-NO-LF CRLF )
+description      = *( TEXT-NO-LF CRLF )
+change-body      = *( TEXT-NO-LF CRLF )
+body             = *( TEXT-NO-LF CRLF )
+
+state-value      = "open" / "closed"
+remote-name      = TEXT-NO-LF
+
+optional-trailers = *( trailer )
+state-trailers    = *( trailer )
+merge-trailers    = *( trailer )
+
+trailer          = trailer-key ": " trailer-value CRLF
+trailer-key      = "Labels" / "Assignee" / "Priority" / "Milestone" /
+                   "Fixed-By" / "Release" / "Reason" / "Provider-ID" /
+                   "Title" / custom-trailer-key
+custom-trailer-key = "X-" TEXT-NO-LF
+trailer-value    = TEXT-NO-LF  ; must not contain actual LF
+
+TEXT-NO-LF       = *( %x20-7E / UTF8-2 / UTF8-3 / UTF8-4 )
+                   ; Any UTF-8 text except LF (0x0A)
+
+UTF8-2           = %xC2-DF UTF8-tail
+UTF8-3           = %xE0-EF 2UTF8-tail
+UTF8-4           = %xF0-F7 3UTF8-tail
+UTF8-tail        = %x80-BF
+
+CRLF             = %x0A  ; Git uses LF, not CRLF
+```
+
+**Notes**:
+- This grammar uses `CRLF` as a placeholder for line endings, but Git
+  commit messages use LF (`\n`, 0x0A) not CRLF (`\r\n`).
+- The `TEXT-NO-LF` production allows any UTF-8 text except newline.
+- Trailer values must not contain embedded newlines (security requirement
+  from Section 11.1).
+- The `Format-Version:` trailer only appears in root commits.
+
+### 4.9 Cross-References
 
 To link a code commit to an issue, use the `Fixes-Issue:` trailer in
 the code commit message:
