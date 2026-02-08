@@ -94,9 +94,9 @@ jobs:
           git-issue init || exit 1
           echo "✓ git-issue init works"
 
-          # Test help command (use -h to avoid man page viewer requirement)
-          git issue -h > /dev/null || exit 1
-          echo "✓ git issue -h works"
+          # Test help command (use git-issue directly with -h)
+          git-issue -h > /dev/null || exit 1
+          echo "✓ git-issue -h works"
 
       - name: Test Makefile installation (system-wide simulation)
         run: |
@@ -154,9 +154,9 @@ jobs:
           git-issue init || exit 1
           echo "✓ git-issue init works on macOS"
 
-          # Test help (use -h to avoid man page viewer requirement)
-          git issue -h > /dev/null || exit 1
-          echo "✓ git issue -h works on macOS"
+          # Test help (use git-issue directly with -h)
+          git-issue -h > /dev/null || exit 1
+          echo "✓ git-issue -h works on macOS"
 
   test-homebrew-formula:
     name: Test Homebrew formula
@@ -184,6 +184,6 @@ jobs:
           git-issue version | grep -q "1.0.1" || exit 1
           echo "✓ Homebrew tap installation works"
 
-          # Test basic commands (use -h to avoid man page viewer requirement)
-          git issue -h > /dev/null || exit 1
+          # Test basic commands (use git-issue directly with -h)
+          git-issue -h > /dev/null || exit 1
           echo "✓ Homebrew-installed git-issue works"
