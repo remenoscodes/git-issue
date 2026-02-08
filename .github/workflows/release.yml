@@ -17,15 +17,154 @@ jobs:
 
       - name: Get version from tag
         id: tag
-        run: printf 'version=%s\n' "${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          echo "version=v${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "version_number=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify version in code matches tag
+        run: |
+          CODE_VERSION=$(grep -E '^VERSION=' bin/git-issue 2>/dev/null || echo "")
+          if [ -z "$CODE_VERSION" ]; then
+            echo "Warning: No VERSION variable found in bin/git-issue"
+          else
+            CODE_VERSION=$(echo "$CODE_VERSION" | sed 's/VERSION="\(.*\)"/\1/')
+            TAG_VERSION="${{ steps.tag.outputs.version_number }}"
+            if [ "$CODE_VERSION" != "$TAG_VERSION" ]; then
+              echo "Error: Version mismatch!"
+              echo "  Tag version: $TAG_VERSION"
+              echo "  Code version: $CODE_VERSION"
+              echo "Please update VERSION in bin/git-issue to match the tag"
+              exit 1
+            fi
+            echo "✓ Version matches: $CODE_VERSION"
+          fi
 
       - name: Create tarball
         run: |
+          mkdir -p git-issue-${{ steps.tag.outputs.version }}
+
+          # Copy all necessary files
+          cp -r bin/ git-issue-${{ steps.tag.outputs.version }}/
+          cp Makefile git-issue-${{ steps.tag.outputs.version }}/
+          cp LICENSE git-issue-${{ steps.tag.outputs.version }}/
+          cp README.md git-issue-${{ steps.tag.outputs.version }}/
+          cp ISSUE-FORMAT.md git-issue-${{ steps.tag.outputs.version }}/
+          cp install.sh git-issue-${{ steps.tag.outputs.version }}/
+
+          # Copy documentation if it exists
+          if [ -d doc ]; then
+            cp -r doc/ git-issue-${{ steps.tag.outputs.version }}/
+          fi
+
+          # Copy Formula for reference
+          if [ -d Formula ]; then
+            cp -r Formula/ git-issue-${{ steps.tag.outputs.version }}/
+          fi
+
+          # Create tarball
           tar czf git-issue-${{ steps.tag.outputs.version }}.tar.gz \
-            bin/ Makefile LICENSE README.md
+            git-issue-${{ steps.tag.outputs.version }}/
+
+          # Compute SHA256
+          SHA256=$(shasum -a 256 git-issue-${{ steps.tag.outputs.version }}.tar.gz | awk '{print $1}')
+          echo "sha256=${SHA256}" >> "$GITHUB_OUTPUT"
+          echo "tarball=git-issue-${{ steps.tag.outputs.version }}.tar.gz" >> "$GITHUB_OUTPUT"
+
+          echo "✓ Tarball created: git-issue-${{ steps.tag.outputs.version }}.tar.gz"
+          echo "✓ SHA256: ${SHA256}"
+        id: tarball
+
+      - name: Test tarball installation
+        run: |
+          # Extract tarball
+          tar xzf git-issue-${{ steps.tag.outputs.version }}.tar.gz
+          cd git-issue-${{ steps.tag.outputs.version }}
+
+          # Test make install
+          make install prefix="${{ runner.temp }}/test-install"
+
+          # Verify binaries installed
+          test -f "${{ runner.temp }}/test-install/bin/git-issue" || exit 1
+          test -x "${{ runner.temp }}/test-install/bin/git-issue" || exit 1
+
+          # Test version command (if VERSION is in code)
+          if grep -q "^VERSION=" bin/git-issue; then
+            PATH="${{ runner.temp }}/test-install/bin:$PATH" git-issue version || true
+          fi
+
+          echo "✓ Tarball installation verified"
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get commits since last tag
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+          if [ -n "$PREVIOUS_TAG" ]; then
+            echo "## What's Changed" > RELEASE_NOTES.md
+            echo "" >> RELEASE_NOTES.md
+            git log --pretty=format:"- %s (%h)" ${PREVIOUS_TAG}..HEAD >> RELEASE_NOTES.md
+            echo "" >> RELEASE_NOTES.md
+            echo "" >> RELEASE_NOTES.md
+          else
+            echo "## Initial Release" > RELEASE_NOTES.md
+            echo "" >> RELEASE_NOTES.md
+          fi
+
+          # Add installation instructions
+          cat >> RELEASE_NOTES.md <<'EOF'
+## Installation
+
+### Homebrew (macOS/Linux)
+```bash
+brew install remenoscodes/git-issue/git-issue
+```
+
+### Install Script (Any POSIX System)
+```bash
+curl -sSL https://github.com/remenoscodes/git-issue/releases/download/${{ steps.tag.outputs.version }}/git-issue-${{ steps.tag.outputs.version }}.tar.gz | tar xz
+cd git-issue-${{ steps.tag.outputs.version }}
+sudo make install
+```
+
+### From Tarball
+Download `git-issue-${{ steps.tag.outputs.version }}.tar.gz` below, extract, and run:
+```bash
+tar xzf git-issue-${{ steps.tag.outputs.version }}.tar.gz
+cd git-issue-${{ steps.tag.outputs.version }}
+sudo make install
+# Or user install:
+make install prefix=~/.local
+```
+
+## Verification
+```bash
+git issue version
+```
+
+## SHA256
+```
+${{ steps.tarball.outputs.sha256 }}
+```
+EOF
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
-          files: git-issue-${{ steps.tag.outputs.version }}.tar.gz
+          body_path: RELEASE_NOTES.md
+          files: ${{ steps.tarball.outputs.tarball }}
+          fail_on_unmatched_files: true
+
+      - name: Update Homebrew formula (create PR)
+        if: github.event_name == 'push'
+        run: |
+          echo "✓ Release created!"
+          echo ""
+          echo "⚠️  MANUAL STEP REQUIRED:"
+          echo "Update Formula/git-issue.rb with:"
+          echo "  version: ${{ steps.tag.outputs.version_number }}"
+          echo "  sha256: ${{ steps.tarball.outputs.sha256 }}"
+          echo "  url: https://github.com/remenoscodes/git-issue/releases/download/${{ steps.tag.outputs.version }}/git-issue-${{ steps.tag.outputs.version }}.tar.gz"
+          echo ""
+          echo "Then commit and push to update the formula."
