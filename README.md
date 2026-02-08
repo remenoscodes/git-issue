@@ -7,8 +7,9 @@ Distributed issue tracking embedded in Git.
 Your source code travels with `git clone`. Your issues don't.
 
 Migrate from GitHub to GitLab? Your code comes with you. Your issues
-stay behind, trapped in a proprietary API. Linus Torvalds called this
-out in 2007:
+stay behind, trapped in a proprietary API. Work offline on code? Sure.
+Work offline on issues? Not without a web browser and internet
+connection. Linus Torvalds called this out in 2007:
 
 > "A 'git for bugs', where you can track bugs locally and without a
 > web interface."
@@ -17,11 +18,25 @@ out in 2007:
 
 Nearly two decades later, this problem remains unsolved.
 
-## The Solution
+## The Solution: Issues Are Just Git
+
+Here's the insight: **issues are append-only event logs, and Git is a
+distributed append-only content-addressable database**. The data model
+fits perfectly.
 
 `git-issue` stores issues as Git commits under `refs/issues/`. No
-external database. No JSON. No custom formats. Just commits, trailers,
-and refs -- Git's own primitives.
+external database. No JSON files in the working tree. No custom merge
+algorithms. Just commits, trailers, and refs -- Git's own primitives:
+
+- **Commits** = issue events (creation, comments, state changes)
+- **Refs** = issue identity (one ref per issue, named by UUID)
+- **Trailers** = structured metadata (State, Labels, Assignee, Priority)
+- **Merge commits** = distributed conflict resolution (built into Git)
+- **Fetch/push** = synchronization (no custom protocol needed)
+
+Git already solved distributed synchronization, content addressing,
+cryptographic integrity, and three-way merging. Why rebuild all that
+for issue tracking?
 
 ```
 $ git issue create "Fix login crash with special characters"
@@ -44,6 +59,45 @@ Push issues to any remote. Fetch them back. They travel with the code:
 $ git push origin 'refs/issues/*'
 $ git fetch origin 'refs/issues/*:refs/issues/*'
 ```
+
+## Why Git's Data Model Fits Perfectly
+
+Most issue trackers bolt a database onto version control. `git-issue`
+realizes that **Git already is a distributed database** -- one that's
+designed exactly for this problem.
+
+### The Mapping
+
+| Issue Tracking Concept | Git Primitive | Why It Works |
+|------------------------|---------------|--------------|
+| **Issue identity** | `refs/issues/<uuid>` | Unique, immutable, collision-free in distributed systems |
+| **Issue events** | Commits in a chain | Append-only, content-addressed, cryptographically verified |
+| **Metadata** | Git trailers | Parseable by standard Git tools (`interpret-trailers`) |
+| **Comments** | Commit messages | Full-text searchable with `git log --grep` |
+| **State history** | Commit ancestry | `git log refs/issues/<id>` shows the full timeline |
+| **Distributed sync** | `git fetch/push` | Zero custom protocol needed |
+| **Conflict resolution** | Three-way merge | Merge commits resolve divergent issue updates |
+| **Data integrity** | SHA-1/SHA-256 | Tampering detection built into Git |
+| **Offline work** | Local refs | Full read/write access without network |
+| **Atomic operations** | Ref updates | `git update-ref` is atomic, no race conditions |
+
+### What You Get For Free
+
+By using Git's data model, `git-issue` inherits decades of battle-tested
+distributed systems engineering:
+
+- ✅ **Content-addressable storage** -- Issues are deduplicated, cryptographically verified
+- ✅ **Three-way merge** -- Divergent updates resolve deterministically
+- ✅ **Atomic ref updates** -- No race conditions when multiple processes modify issues
+- ✅ **Efficient transfer** -- Git's packfile protocol minimizes bandwidth
+- ✅ **Protocol v2 support** -- Server-side filtering for repos with 10,000+ issues
+- ✅ **SSH/HTTPS transport** -- Same authentication as code pushes
+- ✅ **Clone/fork/mirror** -- Issues travel with code automatically
+- ✅ **Garbage collection** -- Unreachable issues are cleaned up by `git gc`
+
+This isn't "using Git as a database". This is **recognizing that issue
+tracking is distributed synchronization of append-only logs**, which is
+exactly what Git was designed to do.
 
 ## Installation
 
@@ -233,34 +287,87 @@ git issue fsck --quiet
 
 Checks: UUID format, empty tree usage, required trailers (`State`, `Format-Version`), single root commit per issue.
 
-## How It Works
+## How It Works: The Data Model
 
-Each issue is a chain of commits on its own ref:
+Each issue is a chain of commits on its own ref. It's just Git:
 
 ```
-refs/issues/a7f3b2c1-4e5d-...
+refs/issues/a7f3b2c1-4e5d-4f8a-b9c3-1234567890ab
     |
     v
   [Close issue]              State: closed
     |                        Fixed-By: abc123
+    v
   [Reproduced on Firefox]    (comment)
     |
+    v
   [Fix login crash...]       State: open
                              Labels: bug, auth
+                             Priority: critical
                              Format-Version: 1
 ```
 
-The issue title is the commit subject line. The description is the
-commit body. Metadata lives in standard Git trailers. Everything is
-queryable with `git for-each-ref`:
+**Why this works beautifully:**
 
-```sh
-git for-each-ref \
-  --format='%(refname:short) %(contents:subject) %(trailers:key=State,valueonly)' \
-  refs/issues/
+1. **Commits are events** -- Each commit is an immutable event (issue
+   creation, comment, state change). Git's content-addressable storage
+   gives us cryptographic integrity for free.
+
+2. **Refs are identities** -- `refs/issues/<uuid>` points to the latest
+   state of an issue. Git's ref machinery handles updates atomically.
+
+3. **Trailers are metadata** -- `State: open`, `Labels: bug, auth` are
+   standard Git trailers. They're parseable by `git interpret-trailers`
+   and queryable via `git for-each-ref` with zero subprocess spawning:
+
+   ```sh
+   git for-each-ref \
+     --format='%(refname:short) %(contents:subject) %(trailers:key=State,valueonly)' \
+     refs/issues/
+   ```
+
+4. **Merge commits resolve conflicts** -- When two people modify the
+   same issue offline, Git's three-way merge machinery creates a merge
+   commit with resolved metadata. No CRDTs, no operational transforms,
+   just merge commits.
+
+5. **Fetch/push is synchronization** -- `git fetch origin 'refs/issues/*'`
+   pulls issues. `git push origin 'refs/issues/*'` shares them. The
+   same protocol that syncs code syncs issues.
+
+**Performance:** This scales to 10,000+ issues because `git for-each-ref`
+is a single batch operation -- not one subprocess per issue like most
+Git porcelain commands.
+
+### Visual: The Complete Picture
+
+Here's how everything fits together in Git's object model:
+
+```
+Repository:
+  .git/
+    refs/
+      heads/main          → [code commits]
+      issues/
+        a7f3b2c1-...      → commit(close)    State: closed
+                              ↓                Fixed-By: abc123
+                           commit(comment)   "Reproduced on Firefox"
+                              ↓
+                           commit(create)    State: open
+                              ↓                Labels: bug, auth
+                           tree(empty)       (root of issue chain)
+
+What Git provides:
+  • Atomic ref updates    → No race conditions on concurrent edits
+  • Three-way merge       → Automatic conflict resolution on divergence
+  • Content addressing    → Deduplication + cryptographic integrity
+  • Transfer protocol     → Efficient sync over SSH/HTTPS
+  • Garbage collection    → Unreachable issues cleaned automatically
 ```
 
-Zero subprocess spawning. Works for 10,000+ issues.
+It's not "abusing Git" -- it's **using Git exactly as designed**: a
+distributed append-only content-addressable database with built-in
+merge resolution.
 
 ## The Format Spec
 
@@ -273,14 +380,94 @@ If the Git community blesses this format, platforms like GitHub, GitLab,
 and Forgejo can adopt native support for `refs/issues/*`, making issue
 portability as natural as code portability.
 
-## Design Decisions
+## Design Decisions: Following Git's Philosophy
 
-- **UUIDs** (not sequential IDs) -- zero collision in distributed systems
-- **Git trailers** (not JSON, not YAML) -- `interpret-trailers` compatible
-- **Subject-line-as-title** -- `%(contents:subject)` works natively
-- **Three-way set merge for labels** -- no CRDTs needed
-- **Last-writer-wins for state** -- deterministic, simple
-- **Import/export bridges** (not live sync) -- one hard problem at a time
+Every design choice aligns with Git's philosophy: **simple primitives,
+composed well**.
+
+### UUIDs (not sequential IDs)
+Sequential IDs (issue #1, #2, #3) require coordination. In distributed
+systems, two people can't both create "issue #42" offline. UUIDs are
+collision-free by design -- the same reason Git uses SHA-1 hashes
+instead of sequential commit numbers.
+
+### Git trailers (not JSON, not YAML)
+JSON in commit messages breaks `git log` readability. YAML is complex
+to parse. Git trailers are a 20-year-old standard (`git interpret-trailers`)
+that's human-readable, machine-parseable, and compatible with existing
+Git tooling.
+
+### Subject-line-as-title
+The issue title is the commit subject line. This means `git log refs/issues/*`
+naturally shows issue titles, and `%(contents:subject)` in `git for-each-ref`
+extracts it with zero parsing. Git's existing formatting machinery works
+out of the box.
+
+### Three-way set merge for labels
+Labels are a set. When two people modify labels offline, the merge should
+preserve additions from both sides and honor explicit removals. Git's
+three-way merge (base, ours, theirs) handles this perfectly -- no CRDTs,
+no vector clocks, just merge-base computation.
+
+### Last-writer-wins for state
+State (open/closed), assignee, and priority are scalar values. When two
+people change them offline, there's no "correct" merge -- just pick the
+most recent by timestamp. Simple, deterministic, and matches user
+expectations.
+
+### Import/export bridges (not live sync)
+GitHub and GitLab won't adopt `refs/issues/*` overnight. Bridges allow
+migration and interop without solving real-time two-way sync (which
+requires webhooks, conflict resolution UI, and operational complexity).
+Start with batch import/export. Live sync is a v2 problem.
+
+### Zero dependencies on working tree
+Issues live in `refs/`, not the working tree. This means:
+- No `.issues/` directory cluttering `git status`
+- No merge conflicts in issue files during code merges
+- No "commit your issues" workflow confusion
+- Issues work in bare repositories (on servers)
+
+## What Makes This Different: The Ancient Problem
+
+Distributed issue tracking has been attempted for nearly 20 years. Every
+previous attempt failed to gain traction. Why?
+
+**Six fundamental problems:**
+
+1. **Merge conflicts** -- Storing issues as files in the working tree
+   (Bugs Everywhere, Ditz) creates merge conflicts that break `git merge`.
+   Users must resolve issue file conflicts manually, which is unacceptable.
+
+2. **Network effects** -- Platforms like GitHub provide issue tracking as
+   part of a hosting service. Switching to distributed issues means losing
+   web UI, notifications, and integrations. No single project can overcome
+   this chicken-and-egg problem.
+
+3. **No format spec** -- Every tool invented its own format. No interop,
+   no ecosystem, no way for Git platforms to adopt it. Just code that
+   happened to produce some files or refs.
+
+4. **Excluding non-developers** -- Git is for developers. Issue tracking
+   is for everyone. File-based storage excludes users who can't read commit
+   logs or run shell commands.
+
+5. **Weak offline argument** -- Most developers have internet. The "work
+   offline" pitch isn't compelling enough to overcome the switching cost.
+
+6. **Resource constraints** -- These were side projects, not funded products.
+   They couldn't compete with GitHub's issue tracker on polish and features.
+
+**How `git-issue` addresses these:**
+
+| Problem | Solution |
+|---------|----------|
+| **Merge conflicts** | Issues live in `refs/`, not working tree. Code merges never touch issues. |
+| **Network effects** | Ship a standalone **format spec** (`ISSUE-FORMAT.md`). Platforms can adopt it incrementally. |
+| **No format spec** | The spec is the deliverable. Implementations are interchangeable. |
+| **Excluding non-developers** | Start with developers. Import/export bridges keep issues in GitHub for non-dev stakeholders. |
+| **Weak offline argument** | The real pitch: **issue portability**. Code outlives hosting platforms. Issues should too. |
+| **Resource constraints** | Keep scope minimal. Format spec + one reference implementation. Ecosystem adoption is the goal, not feature parity with Jira. |
 
 ## Prior Art
 
