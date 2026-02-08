@@ -1,0 +1,183 @@
+name: Test Installation
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'install.sh'
+      - 'Makefile'
+      - 'bin/**'
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  test-install-script:
+    name: Test install.sh on ${{ matrix.os }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu:22.04
+          - ubuntu:20.04
+          - debian:12
+          - debian:11
+          - alpine:latest
+          - archlinux:latest
+
+    container:
+      image: ${{ matrix.os }}
+
+    steps:
+      - name: Install dependencies (Ubuntu/Debian)
+        if: startsWith(matrix.os, 'ubuntu') || startsWith(matrix.os, 'debian')
+        run: |
+          apt-get update
+          apt-get install -y git make
+
+      - name: Install dependencies (Alpine)
+        if: startsWith(matrix.os, 'alpine')
+        run: |
+          apk add --no-cache git make bash
+
+      - name: Install dependencies (Arch)
+        if: startsWith(matrix.os, 'archlinux')
+        run: |
+          pacman -Syu --noconfirm git make
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Test install.sh (user install)
+        run: |
+          # Test user installation
+          ./install.sh "$HOME/.local"
+
+          # Verify binaries installed
+          test -f "$HOME/.local/bin/git-issue" || exit 1
+          test -x "$HOME/.local/bin/git-issue" || exit 1
+
+          # Verify all subcommands installed
+          for cmd in create ls show comment edit state search import export sync merge fsck init; do
+            test -f "$HOME/.local/bin/git-issue-$cmd" || exit 1
+            test -x "$HOME/.local/bin/git-issue-$cmd" || exit 1
+          done
+
+          echo "✓ User installation succeeded"
+
+      - name: Test version command
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          VERSION_OUTPUT="$(git-issue version)"
+          echo "Version output: $VERSION_OUTPUT"
+
+          # Verify version matches expected
+          echo "$VERSION_OUTPUT" | grep -q "1.0.1" || exit 1
+          echo "✓ Version command works"
+
+      - name: Test basic commands
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+
+          # Initialize git repo for testing
+          mkdir -p /tmp/test-repo
+          cd /tmp/test-repo
+          git init
+          git config user.name "Test User"
+          git config user.email "test@example.com"
+
+          # Test init command
+          git-issue init || exit 1
+          echo "✓ git-issue init works"
+
+          # Test help command
+          git-issue --help > /dev/null || exit 1
+          echo "✓ git-issue --help works"
+
+      - name: Test Makefile installation (system-wide simulation)
+        run: |
+          # Clean previous user install
+          rm -rf "$HOME/.local/bin/git-issue"*
+
+          # Test make install to a temporary prefix
+          make install prefix=/tmp/install-test
+
+          # Verify installation
+          test -f /tmp/install-test/bin/git-issue || exit 1
+          test -x /tmp/install-test/bin/git-issue || exit 1
+
+          echo "✓ Makefile installation succeeded"
+
+  test-macos-install:
+    name: Test installation on macOS
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Test install.sh (user install)
+        run: |
+          ./install.sh "$HOME/.local"
+
+          # Verify binaries installed
+          test -f "$HOME/.local/bin/git-issue" || exit 1
+          test -x "$HOME/.local/bin/git-issue" || exit 1
+
+          echo "✓ macOS user installation succeeded"
+
+      - name: Test version command
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          git-issue version | grep -q "1.0.1" || exit 1
+          echo "✓ Version command works on macOS"
+
+      - name: Test basic functionality
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+
+          # Initialize git repo
+          mkdir -p /tmp/test-repo
+          cd /tmp/test-repo
+          git init
+          git config user.name "Test User"
+          git config user.email "test@example.com"
+
+          # Test init
+          git-issue init || exit 1
+          echo "✓ git-issue init works on macOS"
+
+          # Test help
+          git-issue --help > /dev/null || exit 1
+          echo "✓ git-issue --help works on macOS"
+
+  test-homebrew-formula:
+    name: Test Homebrew formula
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Test formula syntax
+        run: |
+          # Validate formula Ruby syntax
+          ruby -c Formula/git-issue.rb || exit 1
+          echo "✓ Formula syntax valid"
+
+      - name: Test formula installation (from local file)
+        run: |
+          # Uninstall if already installed
+          brew uninstall git-issue 2>/dev/null || true
+
+          # Install from local formula
+          brew install --build-from-source Formula/git-issue.rb || exit 1
+
+          # Verify installation
+          git-issue version | grep -q "1.0.1" || exit 1
+          echo "✓ Homebrew formula installation works"
+
+          # Test basic commands
+          git-issue --help > /dev/null || exit 1
+          echo "✓ Homebrew-installed git-issue works"
