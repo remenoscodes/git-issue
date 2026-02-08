@@ -152,14 +152,29 @@ jobs:
             echo '```'
             echo "${{ steps.tarball.outputs.sha256 }}"
             echo '```'
+            echo ""
+            if [ -f "${{ steps.tarball.outputs.tarball }}.asc" ]; then
+              echo "## GPG Signature Verification"
+              echo "Verify the tarball authenticity:"
+              echo '```bash'
+              echo "# Import public key (first time only)"
+              echo "gpg --keyserver keys.openpgp.org --recv-keys B71E4769AE500472"
+              echo ""
+              echo "# Verify signature"
+              echo "gpg --verify git-native-issue-${{ steps.tag.outputs.version }}.tar.gz.asc git-native-issue-${{ steps.tag.outputs.version }}.tar.gz"
+              echo '```'
+              echo ""
+            fi
           } >> RELEASE_NOTES.md
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
           body_path: RELEASE_NOTES.md
-          files: ${{ steps.tarball.outputs.tarball }}
-          fail_on_unmatched_files: true
+          files: |
+            ${{ steps.tarball.outputs.tarball }}
+            ${{ steps.tarball.outputs.tarball }}.asc
+          fail_on_unmatched_files: false
 
       - name: Update Homebrew formula automatically
         if: github.event_name == 'push'
@@ -219,3 +234,40 @@ jobs:
           echo ""
           echo "Homebrew users can now install with:"
           echo "  brew install remenoscodes/git-native-issue/git-native-issue"
+
+      - name: Import GPG key
+        if: github.event_name == 'push'
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          if [ -z "$GPG_PRIVATE_KEY" ]; then
+            echo "⚠️  GPG_PRIVATE_KEY secret not set - skipping signature"
+            echo "SKIP_GPG=true" >> $GITHUB_ENV
+            exit 0
+          fi
+          
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+          echo "✓ GPG key imported"
+      
+      - name: Sign release tarball
+        if: github.event_name == 'push' && env.SKIP_GPG != 'true'
+        env:
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          TARBALL="${{ steps.tarball.outputs.tarball }}"
+          
+          # Sign with GPG
+          if [ -n "$GPG_PASSPHRASE" ]; then
+            echo "$GPG_PASSPHRASE" | gpg --batch --yes --passphrase-fd 0 \
+              --armor --detach-sign "$TARBALL"
+          else
+            gpg --batch --yes --armor --detach-sign "$TARBALL"
+          fi
+          
+          # Verify signature was created
+          test -f "${TARBALL}.asc" || exit 1
+          
+          echo "✓ Tarball signed: ${TARBALL}.asc"
+          echo "signature=${TARBALL}.asc" >> "$GITHUB_OUTPUT"
+        id: sign
