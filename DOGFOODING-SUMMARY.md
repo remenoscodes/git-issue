@@ -123,7 +123,7 @@ Successfully implemented comprehensive installation strategy and set up full dog
 ```
 Exported 9 new issues to GitHub
 Synced 16 existing issues (state updates)
-Total: 25 issues on GitHub (https://github.com/remenoscodes/git-issue/issues)
+Total: 25 issues on GitHub (https://github.com/remenoscodes/git-native-issue/issues)
 ```
 
 **Refs Pushed**:
@@ -326,5 +326,5 @@ This session successfully:
 ---
 
 **Last Updated**: 2026-02-08
-**Issues**: https://github.com/remenoscodes/git-issue/issues
-**Refs**: https://github.com/remenoscodes/git-issue/tree/main (see refs/issues/*)
+**Issues**: https://github.com/remenoscodes/git-native-issue/issues
+**Refs**: https://github.com/remenoscodes/git-native-issue/tree/main (see refs/issues/*)

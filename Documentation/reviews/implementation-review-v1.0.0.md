@@ -92,9 +92,9 @@ Format-Version: 1
 - 🔄 **Phase 2 pending**: Mailing list submission to git@vger.kernel.org (draft ready)
 
 **Evidence**:
-- Format spec: https://github.com/remenoscodes/git-issue/blob/main/ISSUE-FORMAT.md
+- Format spec: https://github.com/remenoscodes/git-native-issue/blob/main/ISSUE-FORMAT.md
 - Mailing list draft: `mailing-list-draft.txt` (created 2026-02-08)
-- Release: https://github.com/remenoscodes/git-issue/releases/tag/v1.0.0
+- Release: https://github.com/remenoscodes/git-native-issue/releases/tag/v1.0.0
 
 **Deviations**: None. Phase 1 complete, Phase 2 ready to begin.
 

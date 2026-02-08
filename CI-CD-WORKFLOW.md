@@ -40,7 +40,7 @@ git-issue uses GitHub Actions for continuous integration and automated releases.
 - Installation via Makefile succeeds
 
 ### View Results
-https://github.com/remenoscodes/git-issue/actions/workflows/ci.yml
+https://github.com/remenoscodes/git-native-issue/actions/workflows/ci.yml
 
 ---
 
@@ -147,7 +147,7 @@ git push origin v1.0.1
 ```
 
 #### Step 4: GitHub Actions Runs Automatically
-Watch progress at: https://github.com/remenoscodes/git-issue/actions
+Watch progress at: https://github.com/remenoscodes/git-native-issue/actions
 
 The workflow will:
 1. ✅ Verify version matches tag
@@ -360,4 +360,4 @@ Track these after each release:
 
 ---
 
-**Questions?** File an issue: https://github.com/remenoscodes/git-issue/issues
+**Questions?** File an issue: https://github.com/remenoscodes/git-native-issue/issues

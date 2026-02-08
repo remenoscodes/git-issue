@@ -91,7 +91,7 @@ Features:
 - Full Git history and merging
 - Format specification (ISSUE-FORMAT.md)
 
-Upstream: https://github.com/remenoscodes/git-issue"
+Upstream: https://github.com/remenoscodes/git-native-issue"
 
 # Push to AUR
 git push origin main
@@ -159,7 +159,7 @@ Monitor package page for:
 **Solution**:
 ```bash
 # Download tarball
-curl -LO https://github.com/remenoscodes/git-issue/releases/download/v1.0.1/git-issue-v1.0.1.tar.gz
+curl -LO https://github.com/remenoscodes/git-native-issue/releases/download/v1.0.1/git-issue-v1.0.1.tar.gz
 
 # Compute SHA256
 sha256sum git-issue-v1.0.1.tar.gz

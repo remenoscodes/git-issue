@@ -249,7 +249,7 @@ read/write the format. No lock-in to my shell scripts.
     git push origin 'refs/issues/*'
 
 GitHub: https://github.com/remenoscodes/git-issue
-Format spec: https://github.com/remenoscodes/git-issue/blob/main/ISSUE-FORMAT.md
+Format spec: https://github.com/remenoscodes/git-native-issue/blob/main/ISSUE-FORMAT.md
 ```
 
 **Posting strategy**:

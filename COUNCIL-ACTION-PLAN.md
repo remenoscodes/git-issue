@@ -103,7 +103,7 @@ No regressions from spec changes.
   - `ISSUE-FORMAT.md` (+196 lines)
   - `bin/git-issue-state` (+31 lines for trailer validation)
 - **Branch**: main
-- **Remote**: https://github.com/remenoscodes/git-issue.git
+- **Remote**: https://github.com/remenoscodes/git-native-issue.git
 - **Status**: Pushed to origin/main ✅
 
 ---

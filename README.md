@@ -1,6 +1,8 @@
-# git-issue
+# git-native-issue
 
-Distributed issue tracking embedded in Git.
+Distributed issue tracking using Git's native data model.
+
+**Command:** `git issue` (simple to use, despite the project name)
 
 ## The Problem
 
@@ -104,20 +106,20 @@ exactly what Git was designed to do.
 ### Homebrew (macOS/Linux)
 
 ```bash
-brew install remenoscodes/git-issue/git-issue
+brew install remenoscodes/git-native-issue/git-native-issue
 ```
 
 ### Install Script (Any POSIX System)
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/remenoscodes/git-issue/main/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/remenoscodes/git-native-issue/main/install.sh | sh
 ```
 
 Or download and run:
 ```bash
-curl -LO https://github.com/remenoscodes/git-issue/releases/latest/download/git-issue-*.tar.gz
-tar xzf git-issue-*.tar.gz
-cd git-issue-*
+curl -LO https://github.com/remenoscodes/git-native-issue/releases/latest/download/git-native-issue-*.tar.gz
+tar xzf git-native-issue-*.tar.gz
+cd git-native-issue-*
 ./install.sh          # Installs to /usr/local
 ./install.sh ~/.local # Installs to ~/.local
 ```
@@ -125,8 +127,8 @@ cd git-issue-*
 ### Makefile (From Source)
 
 ```bash
-git clone https://github.com/remenoscodes/git-issue.git
-cd git-issue
+git clone https://github.com/remenoscodes/git-native-issue.git
+cd git-native-issue
 make install          # System-wide (/usr/local)
 make install prefix=~ # User install (~/bin)
 ```
@@ -134,7 +136,7 @@ make install prefix=~ # User install (~/bin)
 ### Arch Linux (AUR)
 
 ```bash
-yay -S git-issue      # Coming soon
+yay -S git-native-issue      # Coming soon
 ```
 
 ### Verify Installation

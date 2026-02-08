@@ -56,7 +56,7 @@ Our issues are in `refs/issues/*`, synced via `git push` and `git fetch` like co
 
 ```sh
 # Install
-git clone https://github.com/remenoscodes/git-issue.git
+git clone https://github.com/remenoscodes/git-native-issue.git
 cd git-issue
 make install prefix=~/.local
 
@@ -88,9 +88,9 @@ We're starting with a standalone tool and a solid spec. The goal is to make dist
 
 ## Links
 
-- **Repository**: [github.com/remenoscodes/git-issue](https://github.com/remenoscodes/git-issue)
+- **Repository**: [github.com/remenoscodes/git-native-issue](https://github.com/remenoscodes/git-native-issue)
 - **Format Specification**: [ISSUE-FORMAT.md](ISSUE-FORMAT.md)
-- **Release v1.0.0**: [github.com/remenoscodes/git-issue/releases/tag/v1.0.0](https://github.com/remenoscodes/git-issue/releases/tag/v1.0.0)
+- **Release v1.0.0**: [github.com/remenoscodes/git-native-issue/releases/tag/v1.0.0](https://github.com/remenoscodes/git-native-issue/releases/tag/v1.0.0)
 - **Report issues** (dogfooding!): `git issue create` in your clone
 
 ## Join Us

@@ -337,7 +337,7 @@ shasum -a 256 git-issue-v1.0.1.tar.gz
 # Update Formula/git-issue.rb
 # sha256 "abc123def456..."
 # version "1.0.1"
-# url "https://github.com/remenoscodes/git-issue/releases/download/v1.0.1/git-issue-v1.0.1.tar.gz"
+# url "https://github.com/remenoscodes/git-native-issue/releases/download/v1.0.1/git-issue-v1.0.1.tar.gz"
 ```
 
 ### 3. Create Git Tag
@@ -369,7 +369,7 @@ curl -sSL https://raw.githubusercontent.com/remenoscodes/git-issue/v1.0.1/instal
 git issue version
 
 # Test make install
-git clone https://github.com/remenoscodes/git-issue.git
+git clone https://github.com/remenoscodes/git-native-issue.git
 cd git-issue
 make install prefix=~/.local
 git issue version

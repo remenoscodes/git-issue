@@ -1,9 +1,9 @@
 #!/bin/sh
 #
-# git-issue installer
+# git-native-issue installer
 # Usage: ./install.sh [PREFIX]
 #
-# Installs git-issue to PREFIX/bin (default: /usr/local)
+# Installs git-native-issue to PREFIX/bin (default: /usr/local)
 # Installs man pages to PREFIX/share/man/man1
 #
 
@@ -11,12 +11,12 @@ set -e
 
 PREFIX="${1:-/usr/local}"
 
-echo "Installing git-issue to $PREFIX/bin"
+echo "Installing git-native-issue to $PREFIX/bin"
 
-# Check we're in the git-issue source directory
+# Check we're in the git-native-issue source directory
 if ! test -f bin/git-issue
 then
-	echo "error: must run from git-issue source directory" >&2
+	echo "error: must run from git-native-issue source directory" >&2
 	exit 1
 fi
 
@@ -42,7 +42,7 @@ then
 fi
 
 echo ""
-echo "✓ git-issue installed successfully!"
+echo "✓ git-native-issue installed successfully!"
 echo ""
 echo "Try: git issue create \"Test installation\""
 echo ""

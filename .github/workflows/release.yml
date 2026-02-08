@@ -46,44 +46,44 @@ jobs:
 
       - name: Create tarball
         run: |
-          mkdir -p git-issue-${{ steps.tag.outputs.version }}
+          mkdir -p git-native-issue-${{ steps.tag.outputs.version }}
 
           # Copy all necessary files
-          cp -r bin/ git-issue-${{ steps.tag.outputs.version }}/
-          cp Makefile git-issue-${{ steps.tag.outputs.version }}/
-          cp LICENSE git-issue-${{ steps.tag.outputs.version }}/
-          cp README.md git-issue-${{ steps.tag.outputs.version }}/
-          cp ISSUE-FORMAT.md git-issue-${{ steps.tag.outputs.version }}/
-          cp install.sh git-issue-${{ steps.tag.outputs.version }}/
+          cp -r bin/ git-native-issue-${{ steps.tag.outputs.version }}/
+          cp Makefile git-native-issue-${{ steps.tag.outputs.version }}/
+          cp LICENSE git-native-issue-${{ steps.tag.outputs.version }}/
+          cp README.md git-native-issue-${{ steps.tag.outputs.version }}/
+          cp ISSUE-FORMAT.md git-native-issue-${{ steps.tag.outputs.version }}/
+          cp install.sh git-native-issue-${{ steps.tag.outputs.version }}/
 
           # Copy documentation if it exists
           if [ -d doc ]; then
-            cp -r doc/ git-issue-${{ steps.tag.outputs.version }}/
+            cp -r doc/ git-native-issue-${{ steps.tag.outputs.version }}/
           fi
 
           # Copy Formula for reference
           if [ -d Formula ]; then
-            cp -r Formula/ git-issue-${{ steps.tag.outputs.version }}/
+            cp -r Formula/ git-native-issue-${{ steps.tag.outputs.version }}/
           fi
 
           # Create tarball
-          tar czf git-issue-${{ steps.tag.outputs.version }}.tar.gz \
-            git-issue-${{ steps.tag.outputs.version }}/
+          tar czf git-native-issue-${{ steps.tag.outputs.version }}.tar.gz \
+            git-native-issue-${{ steps.tag.outputs.version }}/
 
           # Compute SHA256
-          SHA256=$(shasum -a 256 git-issue-${{ steps.tag.outputs.version }}.tar.gz | awk '{print $1}')
+          SHA256=$(shasum -a 256 git-native-issue-${{ steps.tag.outputs.version }}.tar.gz | awk '{print $1}')
           echo "sha256=${SHA256}" >> "$GITHUB_OUTPUT"
-          echo "tarball=git-issue-${{ steps.tag.outputs.version }}.tar.gz" >> "$GITHUB_OUTPUT"
+          echo "tarball=git-native-issue-${{ steps.tag.outputs.version }}.tar.gz" >> "$GITHUB_OUTPUT"
 
-          echo "✓ Tarball created: git-issue-${{ steps.tag.outputs.version }}.tar.gz"
+          echo "✓ Tarball created: git-native-issue-${{ steps.tag.outputs.version }}.tar.gz"
           echo "✓ SHA256: ${SHA256}"
         id: tarball
 
       - name: Test tarball installation
         run: |
           # Extract tarball
-          tar xzf git-issue-${{ steps.tag.outputs.version }}.tar.gz
-          cd git-issue-${{ steps.tag.outputs.version }}
+          tar xzf git-native-issue-${{ steps.tag.outputs.version }}.tar.gz
+          cd git-native-issue-${{ steps.tag.outputs.version }}
 
           # Test make install
           make install prefix="${{ runner.temp }}/test-install"
@@ -123,21 +123,21 @@ jobs:
             echo ""
             echo "### Homebrew (macOS/Linux)"
             echo '```bash'
-            echo "brew install remenoscodes/git-issue/git-issue"
+            echo "brew install remenoscodes/git-native-issue/git-native-issue"
             echo '```'
             echo ""
             echo "### Install Script (Any POSIX System)"
             echo '```bash'
-            echo "curl -sSL https://github.com/remenoscodes/git-issue/releases/download/${{ steps.tag.outputs.version }}/git-issue-${{ steps.tag.outputs.version }}.tar.gz | tar xz"
-            echo "cd git-issue-${{ steps.tag.outputs.version }}"
+            echo "curl -sSL https://github.com/remenoscodes/git-native-issue/releases/download/${{ steps.tag.outputs.version }}/git-native-issue-${{ steps.tag.outputs.version }}.tar.gz | tar xz"
+            echo "cd git-native-issue-${{ steps.tag.outputs.version }}"
             echo "sudo make install"
             echo '```'
             echo ""
             echo "### From Tarball"
-            echo "Download \`git-issue-${{ steps.tag.outputs.version }}.tar.gz\` below, extract, and run:"
+            echo "Download \`git-native-issue-${{ steps.tag.outputs.version }}.tar.gz\` below, extract, and run:"
             echo '```bash'
-            echo "tar xzf git-issue-${{ steps.tag.outputs.version }}.tar.gz"
-            echo "cd git-issue-${{ steps.tag.outputs.version }}"
+            echo "tar xzf git-native-issue-${{ steps.tag.outputs.version }}.tar.gz"
+            echo "cd git-native-issue-${{ steps.tag.outputs.version }}"
             echo "sudo make install"
             echo "# Or user install:"
             echo "make install prefix=~/.local"
@@ -167,7 +167,7 @@ jobs:
           # Update Formula/git-issue.rb with new version, SHA256, and URL
           VERSION="${{ steps.tag.outputs.version_number }}"
           SHA256="${{ steps.tarball.outputs.sha256 }}"
-          URL="https://github.com/remenoscodes/git-issue/releases/download/${{ steps.tag.outputs.version }}/git-issue-${{ steps.tag.outputs.version }}.tar.gz"
+          URL="https://github.com/remenoscodes/git-native-issue/releases/download/${{ steps.tag.outputs.version }}/git-native-issue-${{ steps.tag.outputs.version }}.tar.gz"
 
           # Update the formula file
           sed -i.bak "s|url \".*\"|url \"$URL\"|g" Formula/git-issue.rb
@@ -218,4 +218,4 @@ jobs:
           echo "✓ Formula committed and pushed to main"
           echo ""
           echo "Homebrew users can now install with:"
-          echo "  brew install remenoscodes/git-issue/git-issue"
+          echo "  brew install remenoscodes/git-native-issue/git-native-issue"

@@ -16,7 +16,7 @@ Successfully released git-issue v1.0.1 with complete CI/CD automation, Homebrew 
 ### 🎯 Version
 - **Tag**: v1.0.1
 - **Commit**: b04e10b (main) + 6bd4069 (formula update)
-- **Release**: https://github.com/remenoscodes/git-issue/releases/tag/v1.0.1
+- **Release**: https://github.com/remenoscodes/git-native-issue/releases/tag/v1.0.1
 
 ### 📦 Artifacts
 - **Tarball**: git-issue-v1.0.1.tar.gz
@@ -81,14 +81,14 @@ git issue version  # Shows: git-issue version 1.0.1
 
 #### 2. Install Script
 ```bash
-curl -sSL https://github.com/remenoscodes/git-issue/releases/download/v1.0.1/git-issue-v1.0.1.tar.gz | tar xz
+curl -sSL https://github.com/remenoscodes/git-native-issue/releases/download/v1.0.1/git-issue-v1.0.1.tar.gz | tar xz
 cd git-issue-v1.0.1
 sudo make install
 ```
 
 #### 3. Manual Tarball
 ```bash
-# Download from: https://github.com/remenoscodes/git-issue/releases/download/v1.0.1/git-issue-v1.0.1.tar.gz
+# Download from: https://github.com/remenoscodes/git-native-issue/releases/download/v1.0.1/git-issue-v1.0.1.tar.gz
 tar xzf git-issue-v1.0.1.tar.gz
 cd git-issue-v1.0.1
 make install prefix=~/.local  # User install
@@ -286,5 +286,5 @@ All critical issues resolved:
 
 **Last Updated**: 2026-02-08
 **Author**: Emerson Soares (with Claude Code assistance)
-**Release URL**: https://github.com/remenoscodes/git-issue/releases/tag/v1.0.1
+**Release URL**: https://github.com/remenoscodes/git-native-issue/releases/tag/v1.0.1
 **Homebrew Tap**: https://github.com/remenoscodes/git-issue-brew

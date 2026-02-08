@@ -1,22 +1,22 @@
 # Maintainer: Emerson Soares <remenoscodes@gmail.com>
 
-pkgname=git-issue
+pkgname=git-native-issue
 pkgver=1.0.1
 pkgrel=1
-pkgdesc="Distributed issue tracking system built on Git"
+pkgdesc="Distributed issue tracking using Git's native data model"
 arch=('any')
-url="https://github.com/remenoscodes/git-issue"
+url="https://github.com/remenoscodes/git-native-issue"
 license=('GPL2')
 depends=('git' 'jq')
 makedepends=()
 optdepends=(
     'github-cli: for GitHub bridge functionality'
 )
-source=("${pkgname}-${pkgver}.tar.gz::https://github.com/remenoscodes/git-issue/releases/download/v${pkgver}/git-issue-v${pkgver}.tar.gz")
+source=("${pkgname}-${pkgver}.tar.gz::https://github.com/remenoscodes/git-native-issue/releases/download/v${pkgver}/git-native-issue-v${pkgver}.tar.gz")
 sha256sums=('0539533d62a3049d8bb87d1db91d80b8da09d29026294a6e04f4f50f1fd3b437')
 
 package() {
-    cd "${srcdir}/git-issue-v${pkgver}"
+    cd "${srcdir}/git-native-issue-v${pkgver}"
 
     # Install binaries
     install -d "${pkgdir}/usr/bin"
@@ -36,7 +36,7 @@ package() {
 }
 
 check() {
-    cd "${srcdir}/git-issue-v${pkgver}"
+    cd "${srcdir}/git-native-issue-v${pkgver}"
 
     # Basic sanity checks
     [ -f bin/git-issue ] || return 1

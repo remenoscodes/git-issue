@@ -705,7 +705,7 @@ append-only for comments.
 
 - 8 months of use on my project (16 issues, 1 user)
 - 153 tests, 15 commands, GitHub import/export working
-- Format spec: https://github.com/remenoscodes/git-issue/blob/main/ISSUE-FORMAT.md
+- Format spec: https://github.com/remenoscodes/git-native-issue/blob/main/ISSUE-FORMAT.md
 
 Full spec attached below (300 lines, trimmed to core sections).
 
