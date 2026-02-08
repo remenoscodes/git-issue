@@ -252,18 +252,18 @@ jobs:
 
       - name: Validate PKGBUILD syntax
         run: |
-          su - builder -c "cd /github/workspace && bash -n PKGBUILD"
+          su - builder -c "cd $GITHUB_WORKSPACE && bash -n PKGBUILD"
           echo "✓ PKGBUILD syntax valid"
 
       - name: Build package
         run: |
-          su - builder -c "cd /github/workspace && makepkg -s --noconfirm"
+          su - builder -c "cd $GITHUB_WORKSPACE && makepkg -s --noconfirm"
           echo "✓ Package built successfully"
 
       - name: Install package
         run: |
           # Find and install the built package
-          PKGFILE=$(find /github/workspace -name "git-issue-*.pkg.tar.zst" | head -1)
+          PKGFILE=$(find $GITHUB_WORKSPACE -name "git-issue-*.pkg.tar.zst" | head -1)
           pacman -U --noconfirm "$PKGFILE"
           echo "✓ Package installed"
 
