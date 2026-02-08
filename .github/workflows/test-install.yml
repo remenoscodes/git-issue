@@ -7,6 +7,8 @@ on:
       - 'install.sh'
       - 'Makefile'
       - 'bin/**'
+      - 'PKGBUILD'
+      - 'Formula/**'
   pull_request:
     branches: [ main ]
   workflow_dispatch:  # Allow manual trigger
@@ -184,3 +186,93 @@ jobs:
 
           # Test successful - Homebrew installation validated
           echo "✓ Homebrew test complete"
+
+  test-asdf-plugin:
+    name: Test asdf plugin
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install asdf
+        run: |
+          git clone https://github.com/asdf-vm/asdf.git ~/.asdf --branch v0.14.0
+          echo '. "$HOME/.asdf/asdf.sh"' >> ~/.bashrc
+          echo '. "$HOME/.asdf/completions/asdf.bash"' >> ~/.bashrc
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl git jq
+
+      - name: Test plugin installation
+        shell: bash
+        run: |
+          source ~/.asdf/asdf.sh
+
+          # Add plugin from GitHub
+          asdf plugin add git-issue https://github.com/remenoscodes/git-issue-asdf.git
+
+          # List available versions
+          asdf list-all git-issue | grep -q "1.0.1" || exit 1
+          echo "✓ Plugin can list versions"
+
+          # Install specific version
+          asdf install git-issue 1.0.1
+          echo "✓ Version 1.0.1 installed"
+
+          # Set global version
+          asdf global git-issue 1.0.1
+
+          # Verify installation
+          git-issue version | grep -q "1.0.1" || exit 1
+          echo "✓ asdf plugin test complete"
+
+  test-pkgbuild:
+    name: Test PKGBUILD (Arch Linux)
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+
+    steps:
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm base-devel git
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create build user
+        run: |
+          # makepkg cannot run as root
+          useradd -m builder
+          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+          chown -R builder:builder .
+
+      - name: Validate PKGBUILD syntax
+        run: |
+          su - builder -c "cd /github/workspace && bash -n PKGBUILD"
+          echo "✓ PKGBUILD syntax valid"
+
+      - name: Build package
+        run: |
+          su - builder -c "cd /github/workspace && makepkg -s --noconfirm"
+          echo "✓ Package built successfully"
+
+      - name: Install package
+        run: |
+          # Find and install the built package
+          PKGFILE=$(find /github/workspace -name "git-issue-*.pkg.tar.zst" | head -1)
+          pacman -U --noconfirm "$PKGFILE"
+          echo "✓ Package installed"
+
+      - name: Test installation
+        run: |
+          # Verify binaries installed
+          test -f /usr/bin/git-issue || exit 1
+          test -x /usr/bin/git-issue || exit 1
+
+          # Check version
+          git-issue version | grep -q "1.0.1" || exit 1
+          echo "✓ PKGBUILD test complete"
