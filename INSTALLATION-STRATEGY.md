@@ -20,7 +20,7 @@ After analyzing the pros/cons, we're using **Option 1: In-Repo Formula**.
 ### What We're NOT Doing
 
 ❌ Separate `homebrew-tap` repository (unnecessary for single tool)
-❌ Non-standard naming (the repo is `git-issue`, not `homebrew-git-issue`)
+❌ Non-standard naming (the repo is `git-issue`, not `git-issue-brew`)
 
 ### How It Works
 
@@ -179,11 +179,11 @@ paru -S git-issue
 
 ### 5. asdf Plugin 🔧
 
-**Repo**: `remenoscodes/asdf-git-issue` (separate repo)
+**Repo**: `remenoscodes/git-issue-asdf` (separate repo)
 **Target**: Developers using asdf version manager
 **Usage**:
 ```bash
-asdf plugin add git-issue https://github.com/remenoscodes/asdf-git-issue
+asdf plugin add git-issue https://github.com/remenoscodes/git-issue-asdf
 asdf install git-issue latest
 asdf global git-issue 1.0.1
 ```

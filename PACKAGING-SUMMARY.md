@@ -8,7 +8,7 @@
 ## ✅ Completed Packaging
 
 ### 1. **Homebrew** (macOS/Linux)
-**Repository**: https://github.com/remenoscodes/homebrew-git-issue
+**Repository**: https://github.com/remenoscodes/git-issue-brew
 **Status**: ✅ Live and working
 
 **Installation**:
@@ -46,13 +46,13 @@ paru -S git-issue
 ---
 
 ### 3. **asdf** (Version Manager)
-**Repository**: https://github.com/remenoscodes/asdf-git-issue
+**Repository**: https://github.com/remenoscodes/git-issue-asdf
 **Status**: ✅ Live and working
 
 **Installation**:
 ```bash
 # Add plugin
-asdf plugin add git-issue https://github.com/remenoscodes/asdf-git-issue.git
+asdf plugin add git-issue https://github.com/remenoscodes/git-issue-asdf.git
 
 # Install version
 asdf install git-issue 1.0.1
@@ -75,12 +75,12 @@ git-issue version
 
 | Method | Platform | Status | Auto-Update | URL |
 |--------|----------|--------|-------------|-----|
-| **Homebrew** | macOS/Linux | ✅ Live | ✅ Yes | https://github.com/remenoscodes/homebrew-git-issue |
+| **Homebrew** | macOS/Linux | ✅ Live | ✅ Yes | https://github.com/remenoscodes/git-issue-brew |
 | **install.sh** | Any POSIX | ✅ Live | Manual | https://github.com/remenoscodes/git-issue/blob/main/install.sh |
 | **Makefile** | Any POSIX | ✅ Live | Manual | https://github.com/remenoscodes/git-issue/blob/main/Makefile |
 | **GitHub Release** | Any | ✅ Live | Manual | https://github.com/remenoscodes/git-issue/releases |
 | **AUR** | Arch Linux | ⏳ Pending | Manual | Not yet submitted |
-| **asdf** | Any | ✅ Live | Automatic | https://github.com/remenoscodes/asdf-git-issue |
+| **asdf** | Any | ✅ Live | Automatic | https://github.com/remenoscodes/git-issue-asdf |
 | **Nix** | NixOS/Nix | ⏳ Future | TBD | Month 2-3 |
 | **.deb** | Debian/Ubuntu | ⏳ Future | TBD | If demand exists |
 | **.rpm** | RHEL/Fedora | ⏳ Future | TBD | If demand exists |
@@ -205,8 +205,8 @@ git push origin v1.0.2
 | Component | URL |
 |-----------|-----|
 | **Main** | https://github.com/remenoscodes/git-issue |
-| **Homebrew Tap** | https://github.com/remenoscodes/homebrew-git-issue |
-| **asdf Plugin** | https://github.com/remenoscodes/asdf-git-issue |
+| **Homebrew Tap** | https://github.com/remenoscodes/git-issue-brew |
+| **asdf Plugin** | https://github.com/remenoscodes/git-issue-asdf |
 | **Releases** | https://github.com/remenoscodes/git-issue/releases |
 
 ---

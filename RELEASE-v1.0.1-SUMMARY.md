@@ -25,7 +25,7 @@ Successfully released git-issue v1.0.1 with complete CI/CD automation, Homebrew 
 - **Files**: 35 files (binaries, docs, format spec)
 
 ### 🍺 Homebrew
-- **Tap**: https://github.com/remenoscodes/homebrew-git-issue
+- **Tap**: https://github.com/remenoscodes/git-issue-brew
 - **Formula**: git-issue.rb (v1.0.1)
 - **Installation**: `brew install remenoscodes/git-issue/git-issue`
 - **Status**: ✅ Tested and working
@@ -49,8 +49,8 @@ Successfully released git-issue v1.0.1 with complete CI/CD automation, Homebrew 
 ### Issue 3: In-Repo Formula Not Supported
 **Problem**: Homebrew requires formulas to be in a separate tap repository
 **Error**: `Homebrew requires formulae to be in a tap`
-**Fix**: Created separate `homebrew-git-issue` repository
-**Repository**: https://github.com/remenoscodes/homebrew-git-issue
+**Fix**: Created separate `git-issue-brew` repository
+**Repository**: https://github.com/remenoscodes/git-issue-brew
 **Commit**: e75c691
 
 ---
@@ -254,7 +254,7 @@ brew install remenoscodes/git-issue/git-issue
 ### ❌ Wrong: In-Repo Homebrew Formula
 **Initial Decision**: Keep formula in main repository (Formula/git-issue.rb)
 **Why it failed**: Homebrew requires formulas to be in a tap (separate repository)
-**Correct approach**: Create `homebrew-git-issue` repository
+**Correct approach**: Create `git-issue-brew` repository
 **Reference**: Standard practice (ripgrep, bat, fd all use separate taps)
 
 ### ✅ Right: Multiple -m Flags for Commit Messages
@@ -287,4 +287,4 @@ All critical issues resolved:
 **Last Updated**: 2026-02-08
 **Author**: Emerson Soares (with Claude Code assistance)
 **Release URL**: https://github.com/remenoscodes/git-issue/releases/tag/v1.0.1
-**Homebrew Tap**: https://github.com/remenoscodes/homebrew-git-issue
+**Homebrew Tap**: https://github.com/remenoscodes/git-issue-brew

@@ -342,7 +342,7 @@ Council says: "Prove the spec is implementable by others"
 **Why**: Developers using asdf manage ALL tools this way
 
 **Tasks**:
-1. Create `remenoscodes/asdf-git-issue` repo
+1. Create `remenoscodes/git-issue-asdf` repo
 2. Implement bin/list-all, bin/download, bin/install
 3. Test locally with asdf
 4. Document in README
