@@ -144,6 +144,40 @@ then
 	esac
 fi
 
+# Validate trailer values do not contain newlines (security: trailer injection)
+if test -n "$fixed_by"
+then
+	case "$fixed_by" in
+		*"
+"*)
+			echo "error: --fixed-by value must not contain newlines" >&2
+			exit 1
+			;;
+	esac
+fi
+
+if test -n "$release"
+then
+	case "$release" in
+		*"
+"*)
+			echo "error: --release value must not contain newlines" >&2
+			exit 1
+			;;
+	esac
+fi
+
+if test -n "$reason"
+then
+	case "$reason" in
+		*"
+"*)
+			echo "error: --reason value must not contain newlines" >&2
+			exit 1
+			;;
+	esac
+fi
+
 # Verify we are inside a git repository
 git rev-parse --git-dir >/dev/null 2>&1 || {
 	echo "fatal: not a git repository" >&2
