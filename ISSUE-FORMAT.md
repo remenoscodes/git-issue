@@ -106,7 +106,10 @@ refs/issues/<uuid>
 
 ### 3.1 Tree Object
 
-All issue commits use the **empty tree** (`4b825dc642cb6eb9a060e54bf899d15006578022`).
+All issue commits use the **empty tree**. For SHA-1 repositories, this
+is `4b825dc642cb6eb9a060e54bf899d15006578022`. The empty tree hash
+depends on the repository's hash algorithm; implementations SHOULD
+compute it via `git hash-object -t tree /dev/null`.
 Issues carry no file content; all data is in the commit message.
 
 Implementations MUST use the empty tree. This ensures:
@@ -161,7 +164,7 @@ Format-Version: 1
 
 **Optional fields**:
 - Body: Detailed description of the issue
-- `Labels:` trailer: Comma-separated list of labels
+- `Labels:` trailer: Comma-separated list of labels (see Section 4.7)
 - `Assignee:` trailer: Email address of the assignee
 - `Priority:` trailer: `low`, `medium`, `high`, or `critical`
 - `Milestone:` trailer: Milestone name
@@ -267,7 +270,29 @@ X-Upstream-Bug: https://bugs.example.com/123
 Custom trailers MUST NOT conflict with standard trailer names defined
 in this specification.
 
-### 4.6 Cross-References
+### 4.7 Label Format
+
+Labels in the `Labels:` trailer are comma-separated, with optional
+whitespace after each comma. The canonical format is:
+
+```
+Labels: label1, label2, label3
+```
+
+**Rules**:
+- Labels are **case-sensitive**: `Bug` and `bug` are distinct labels
+- Labels MUST NOT contain commas (the separator character)
+- Labels MUST NOT contain newlines
+- Labels MUST NOT be empty strings
+- Leading and trailing whitespace around each label is trimmed
+- The canonical serialization uses comma-space (`, `) as separator
+- `Labels: bug, auth` and `Labels: bug,auth` are equivalent
+
+When comparing labels for merge operations (Section 6.3), implementations
+MUST trim whitespace and compare the resulting strings exactly
+(case-sensitive).
+
+### 4.8 Cross-References
 
 To link a code commit to an issue, use the `Fixes-Issue:` trailer in
 the code commit message:
@@ -282,7 +307,9 @@ Fixes-Issue: a7f3b2c
 
 This is a trailer in a regular code commit (on a code branch), not in
 an issue commit. Implementations SHOULD recognize these trailers and
-display cross-references when showing issues.
+display cross-references when showing issues. The `Fixed-By:` trailer
+in issue commits (Section 4.3) complements this by recording the code
+commit SHA from the issue side.
 
 ---
 
@@ -318,7 +345,8 @@ Other fields follow similar rules:
 
 ### 5.2 Efficient Listing
 
-A conforming implementation can list all issues with a single command:
+For issues with no comments, a single `for-each-ref` command can list
+issues:
 
 ```sh
 git for-each-ref \
@@ -326,8 +354,17 @@ git for-each-ref \
   refs/issues/
 ```
 
-This requires zero subprocess spawning and works efficiently for
-thousands of issues.
+**Note**: `%(contents:subject)` returns the tip commit's subject line.
+For issues with comments, this is the latest comment's subject, NOT
+the issue title. To reliably obtain the issue title, implementations
+MUST either:
+1. Walk to the root commit and read its subject line, or
+2. Use the most recent `Title:` trailer if present (see Section 6.5),
+   falling back to the root commit's subject line.
+
+For state-only listing (without titles), the `for-each-ref` approach
+above is efficient and correct, since `State:` trailers propagate to
+the tip.
 
 ---
 
@@ -373,12 +410,32 @@ broken by lexicographically greater SHA.
 
 ### 6.5 Title and Description
 
-Title and description are set only in the root commit and are immutable.
-If title changes are needed, implementations SHOULD use a `Title:`
-trailer in a subsequent commit to override the original subject line.
-The most recent `Title:` trailer wins (LWW).
+The root commit's subject line is the canonical title. The root
+commit's body is the canonical description. Implementations MAY
+override the display title using a `Title:` trailer in a subsequent
+commit. The most recent `Title:` trailer takes precedence (LWW).
+Descriptions are not overridable.
 
-### 6.6 Conflict Representation
+### 6.7 Merge Commit Format
+
+When creating a merge commit to resolve a divergent issue, the commit
+MUST have two parents (local HEAD and remote HEAD) and use the empty
+tree. The commit message format:
+
+```
+Merge issue from <remote>
+
+State: <resolved-state>
+Labels: <resolved-labels>
+Assignee: <resolved-assignee>
+```
+
+The subject line SHOULD be `Merge issue from <remote>`. The merge
+commit MUST include trailers for all resolved fields that have
+non-empty values. The merge commit MUST NOT include a
+`Format-Version:` trailer (only the root commit carries this).
+
+### 6.8 Conflict Representation
 
 If a merge produces a conflict that cannot be resolved automatically
 (e.g., both sides changed the title to different values):
