@@ -193,6 +193,10 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+          # Checkout main branch (we're in detached HEAD from tag)
+          git fetch origin main:main
+          git checkout main
+
           # Check if there are changes to commit
           if git diff --quiet Formula/git-issue.rb; then
             echo "⚠️  No formula changes to commit"
