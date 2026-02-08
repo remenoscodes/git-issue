@@ -186,7 +186,12 @@ function emit() {
 		sk = (state == "open") ? 1 : 0
 	}
 
-	printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", sk, short_id, state, title, labels, assignee, priority, milestone
+	# Use "-" placeholder for empty fields to prevent IFS field collapse in shell read
+	printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", sk, short_id, state, title, \
+		(labels == "" ? "-" : labels), \
+		(assignee == "" ? "-" : assignee), \
+		(priority == "" ? "-" : priority), \
+		(milestone == "" ? "-" : milestone)
 }
 
 /^ISSUE\t/ {
@@ -236,6 +241,12 @@ printf '%s\n' "$sorted" | while IFS='	' read -r _sort_key short_id state title l
 do
 	# Skip empty lines
 	test -n "$short_id" || continue
+
+	# Convert "-" placeholders back to empty strings
+	test "$labels" = "-" && labels=""
+	test "$issue_assignee" = "-" && issue_assignee=""
+	test "$issue_priority" = "-" && issue_priority=""
+	test "$issue_milestone" = "-" && issue_milestone=""
 
 	case "$output_format" in
 		oneline)
