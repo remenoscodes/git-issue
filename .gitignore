@@ -1,0 +1,12 @@
+# Build artifacts
+*.tar.gz
+*.zip
+
+# Test temporary files
+t/tmp-*
+
+# Editor files
+*.swp
+*.swo
+*~
+.DS_Store

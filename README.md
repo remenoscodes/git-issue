@@ -45,23 +45,50 @@ $ git push origin 'refs/issues/*'
 $ git fetch origin 'refs/issues/*:refs/issues/*'
 ```
 
-## Install
+## Installation
 
-```sh
-git clone https://github.com/remenoscodes/git-issue.git
-cd git-issue
+### Homebrew (macOS/Linux)
 
-# Option 1: Install to ~/.local/bin (no sudo)
-make install prefix=~/.local
-
-# Option 2: Install system-wide
-sudo make install
-
-# Option 3: Just add to PATH
-export PATH="$PATH:$(pwd)/bin"
+```bash
+brew install remenoscodes/git-issue/git-issue
 ```
 
-Verify: `git issue version`
+### Install Script (Any POSIX System)
+
+```bash
+curl -sSL https://raw.githubusercontent.com/remenoscodes/git-issue/main/install.sh | sh
+```
+
+Or download and run:
+```bash
+curl -LO https://github.com/remenoscodes/git-issue/releases/latest/download/git-issue-*.tar.gz
+tar xzf git-issue-*.tar.gz
+cd git-issue-*
+./install.sh          # Installs to /usr/local
+./install.sh ~/.local # Installs to ~/.local
+```
+
+### Makefile (From Source)
+
+```bash
+git clone https://github.com/remenoscodes/git-issue.git
+cd git-issue
+make install          # System-wide (/usr/local)
+make install prefix=~ # User install (~/bin)
+```
+
+### Arch Linux (AUR)
+
+```bash
+yay -S git-issue      # Coming soon
+```
+
+### Verify Installation
+
+```bash
+git issue version
+# git-issue version 1.0.1
+```
 
 ## Commands
 
