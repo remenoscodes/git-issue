@@ -8,7 +8,7 @@
 ## ✅ Completed Packaging
 
 ### 1. **Homebrew** (macOS/Linux)
-**Repository**: https://github.com/remenoscodes/git-native-issue-brew
+**Repository**: https://github.com/remenoscodes/homebrew-git-native-issue
 **Status**: ✅ Live and working
 
 **Installation**:
@@ -75,7 +75,7 @@ git-issue version
 
 | Method | Platform | Status | Auto-Update | URL |
 |--------|----------|--------|-------------|-----|
-| **Homebrew** | macOS/Linux | ✅ Live | ✅ Yes | https://github.com/remenoscodes/git-native-issue-brew |
+| **Homebrew** | macOS/Linux | ✅ Live | ✅ Yes | https://github.com/remenoscodes/homebrew-git-native-issue |
 | **install.sh** | Any POSIX | ✅ Live | Manual | https://github.com/remenoscodes/git-native-issue/blob/main/install.sh |
 | **Makefile** | Any POSIX | ✅ Live | Manual | https://github.com/remenoscodes/git-native-issue/blob/main/Makefile |
 | **GitHub Release** | Any | ✅ Live | Manual | https://github.com/remenoscodes/git-native-issue/releases |
@@ -205,7 +205,7 @@ git push origin v1.0.2
 | Component | URL |
 |-----------|-----|
 | **Main** | https://github.com/remenoscodes/git-native-issue |
-| **Homebrew Tap** | https://github.com/remenoscodes/git-native-issue-brew |
+| **Homebrew Tap** | https://github.com/remenoscodes/homebrew-git-native-issue |
 | **asdf Plugin** | https://github.com/remenoscodes/git-native-issue-asdf |
 | **Releases** | https://github.com/remenoscodes/git-native-issue/releases |
 
