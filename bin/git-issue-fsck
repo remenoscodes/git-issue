@@ -61,8 +61,6 @@ empty_tree="$(git hash-object -t tree /dev/null)"
 # Awk validates UUID format, tree hashes, root trailer presence, and chain integrity.
 # Tree check uses %T format inline (no separate cat-file --batch needed).
 
-errors=0
-checked=0
 
 refs_file="$(mktemp)"
 trap 'rm -f "$refs_file"' EXIT

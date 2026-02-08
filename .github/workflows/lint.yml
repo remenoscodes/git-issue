@@ -1,0 +1,50 @@
+name: Lint
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'bin/**'
+      - '.github/workflows/lint.yml'
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  shellcheck:
+    name: Shellcheck
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Run shellcheck
+        run: |
+          # Install shellcheck
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+          
+          # Run shellcheck on all shell scripts
+          echo "Checking shell scripts..."
+          find bin/ -type f -name "git-issue*" | while read -r script; do
+            echo "Checking $script..."
+            shellcheck -S warning "$script" || exit 1
+          done
+          
+          echo "✓ All shell scripts passed shellcheck"
+      
+      - name: Check script formatting (shfmt)
+        run: |
+          # Install shfmt
+          curl -sS https://webinstall.dev/shfmt | bash
+          export PATH="$HOME/.local/bin:$PATH"
+          
+          # Check formatting (don't fail, just report)
+          echo "Checking shell script formatting..."
+          find bin/ -type f -name "git-issue*" | while read -r script; do
+            if ! shfmt -d "$script"; then
+              echo "⚠️  $script needs formatting (non-blocking)"
+            fi
+          done
+          
+          echo "✓ Formatting check complete"

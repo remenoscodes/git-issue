@@ -169,16 +169,16 @@ jobs:
       - name: Test formula syntax
         run: |
           # Validate formula Ruby syntax
-          ruby -c Formula/git-issue.rb || exit 1
+          ruby -c Formula/git-native-issue.rb || exit 1
           echo "✓ Formula syntax valid"
 
       - name: Test formula installation (from tap)
         run: |
           # Uninstall if already installed
-          brew uninstall git-issue 2>/dev/null || true
+          brew uninstall git-native-issue 2>/dev/null || true
 
           # Install from actual tap
-          brew install remenoscodes/git-issue/git-issue || exit 1
+          brew install remenoscodes/git-native-issue/git-native-issue || exit 1
 
           # Verify installation
           git-issue version | grep -q "1.0.1" || exit 1
@@ -212,18 +212,18 @@ jobs:
           source ~/.asdf/asdf.sh
 
           # Add plugin from GitHub
-          asdf plugin add git-issue https://github.com/remenoscodes/git-issue-asdf.git
+          asdf plugin add git-native-issue https://github.com/remenoscodes/git-native-issue-asdf.git
 
           # List available versions
-          asdf list-all git-issue | grep -q "1.0.1" || exit 1
+          asdf list-all git-native-issue | grep -q "1.0.1" || exit 1
           echo "✓ Plugin can list versions"
 
           # Install specific version
-          asdf install git-issue 1.0.1
+          asdf install git-native-issue 1.0.1
           echo "✓ Version 1.0.1 installed"
 
           # Set global version
-          asdf global git-issue 1.0.1
+          asdf global git-native-issue 1.0.1
 
           # Verify installation
           git-issue version | grep -q "1.0.1" || exit 1

@@ -104,7 +104,6 @@ fi
 validate_no_newlines "$title" "title"
 
 # Verify we are inside a git repository
-git_dir="$(git rev-parse --git-dir 2>/dev/null)" || {
 	echo "fatal: not a git repository" >&2
 	exit 128
 }
