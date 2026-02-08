@@ -204,11 +204,16 @@ do
 		labels_json="$(printf '%s' "$labels" | jq -R 'split(", ")')"
 	fi
 
+	# Build complete JSON payload
+	json_payload="$(jq -n \
+		--arg title "$title" \
+		--arg body "$body" \
+		--argjson labels "$labels_json" \
+		'{title: $title, body: $body, labels: $labels}')"
+
 	# Create the issue on GitHub
-	create_response="$(gh api --method POST "/repos/$gh_owner/$gh_reponame/issues" \
-		-f title="$title" \
-		-f body="$body" \
-		--argjson labels "$labels_json" 2>&1)" || {
+	create_response="$(printf '%s' "$json_payload" | gh api --method POST "/repos/$gh_owner/$gh_reponame/issues" \
+		--input - 2>&1)" || {
 		echo "error: failed to create issue on GitHub: $create_response" >&2
 		continue
 	}
