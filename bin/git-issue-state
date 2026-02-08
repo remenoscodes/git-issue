@@ -116,11 +116,19 @@ then
 	usage
 fi
 
-# Validate no newlines in state value
+# Validate state value
 case "$new_state" in
 	*"
 "*)
 		echo "error: state must not contain newlines" >&2
+		exit 1
+		;;
+esac
+
+# Validate state contains only safe characters (alphanumeric, hyphens, underscores)
+case "$new_state" in
+	*[!a-zA-Z0-9_-]*)
+		echo "error: state must contain only alphanumeric characters, hyphens, or underscores" >&2
 		exit 1
 		;;
 esac

@@ -82,7 +82,7 @@ fi
 remote_count="$(git for-each-ref --count=1 --format='x' "refs/remotes/$remote/issues/" | wc -l | tr -d ' ')"
 if test "$remote_count" -eq 0
 then
-	printf 'No issues found on remote '%s'.\n' "$remote"
+	printf 'No issues found on remote '\''%s'\''.\n' "$remote"
 	exit 0
 fi
 
@@ -94,9 +94,66 @@ merged=0
 up_to_date=0
 diverged=0
 
-refs_file="$(mktemp)"
-tmpfile="$(mktemp)"
-trap 'rm -f "$refs_file" "$tmpfile"' EXIT
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+refs_file="$tmpdir/refs"
+tmpfile="$tmpdir/msg"
+
+# --- Single-pass trailer extraction ---
+# Extract all trailer values from a ref's chain in ONE git log + awk call
+# (replaces 5 separate get_trailer_val calls = 20 forks per version)
+extract_trailers() {
+	git log --format='%(trailers)COMMIT_END' "$1" | awk '
+/^State: /     { if (state == "")     { state = $0; sub(/^State: /, "", state) } }
+/^Labels: /    { if (labels == "")    { labels = $0; sub(/^Labels: /, "", labels) } }
+/^Assignee: /  { if (assignee == "")  { assignee = $0; sub(/^Assignee: /, "", assignee) } }
+/^Priority: /  { if (priority == "")  { priority = $0; sub(/^Priority: /, "", priority) } }
+/^Milestone: / { if (milestone == "") { milestone = $0; sub(/^Milestone: /, "", milestone) } }
+END { printf "%s\t%s\t%s\t%s\t%s", state, labels, assignee, priority, milestone }
+'
+}
+
+# --- LWW resolver for scalar fields ---
+resolve_scalar() {
+	_base_val="$1"
+	_local_val="$2"
+	_remote_val="$3"
+
+	if test "$_local_val" = "$_remote_val"
+	then
+		printf '%s' "$_local_val"
+		return
+	fi
+
+	if test "$_local_val" = "$_base_val"
+	then
+		printf '%s' "$_remote_val"
+		return
+	fi
+	if test "$_remote_val" = "$_base_val"
+	then
+		printf '%s' "$_local_val"
+		return
+	fi
+
+	# Both changed — LWW by tip commit timestamp
+	if test "$_remote_ts" -gt "$_local_ts"
+	then
+		printf '%s' "$_remote_val"
+	elif test "$_local_ts" -gt "$_remote_ts"
+	then
+		printf '%s' "$_local_val"
+	else
+		# Tiebreaker: lexicographically greater SHA wins (POSIX-portable)
+		_winner="$(printf '%s\n%s\n' "$local_head" "$remote_head" | sort | tail -1)"
+		if test "$_winner" = "$local_head"
+		then
+			printf '%s' "$_local_val"
+		else
+			printf '%s' "$_remote_val"
+		fi
+	fi
+}
 
 git for-each-ref --format='%(refname)' "refs/remotes/$remote/issues/" > "$refs_file"
 
@@ -170,20 +227,6 @@ do
 
 	# === Resolve divergent issue merge ===
 
-	# --- Single-pass trailer extraction ---
-	# Extract all trailer values from a ref's chain in ONE git log + awk call
-	# (replaces 5 separate get_trailer_val calls = 20 forks per version)
-	extract_trailers() {
-		git log --format='%(trailers)COMMIT_END' "$1" | awk '
-/^State: /     { if (state == "")     { state = $0; sub(/^State: /, "", state) } }
-/^Labels: /    { if (labels == "")    { labels = $0; sub(/^Labels: /, "", labels) } }
-/^Assignee: /  { if (assignee == "")  { assignee = $0; sub(/^Assignee: /, "", assignee) } }
-/^Priority: /  { if (priority == "")  { priority = $0; sub(/^Priority: /, "", priority) } }
-/^Milestone: / { if (milestone == "") { milestone = $0; sub(/^Milestone: /, "", milestone) } }
-END { printf "%s\t%s\t%s\t%s\t%s", state, labels, assignee, priority, milestone }
-'
-	}
-
 	# 3 git log calls instead of 15
 	_base_data="$(extract_trailers "$base")"
 	_local_data="$(extract_trailers "$local_ref")"
@@ -211,46 +254,6 @@ END { printf "%s\t%s\t%s\t%s\t%s", state, labels, assignee, priority, milestone 
 	_local_ts="$(git log -1 --format='%at' "$local_head")"
 	_remote_ts="$(git log -1 --format='%at' "$remote_head")"
 
-	# --- LWW resolver for scalar fields ---
-	resolve_scalar() {
-		_base_val="$1"
-		_local_val="$2"
-		_remote_val="$3"
-
-		if test "$_local_val" = "$_remote_val"
-		then
-			printf '%s' "$_local_val"
-			return
-		fi
-
-		if test "$_local_val" = "$_base_val"
-		then
-			printf '%s' "$_remote_val"
-			return
-		fi
-		if test "$_remote_val" = "$_base_val"
-		then
-			printf '%s' "$_local_val"
-			return
-		fi
-
-		# Both changed — LWW by tip commit timestamp
-		if test "$_remote_ts" -gt "$_local_ts"
-		then
-			printf '%s' "$_remote_val"
-		elif test "$_local_ts" -gt "$_remote_ts"
-		then
-			printf '%s' "$_local_val"
-		else
-			if test "$local_head" '>' "$remote_head" 2>/dev/null
-			then
-				printf '%s' "$_local_val"
-			else
-				printf '%s' "$_remote_val"
-			fi
-		fi
-	}
-
 	# Resolve scalar fields
 	resolved_state="$(resolve_scalar "$base_state" "$local_state" "$remote_state")"
 	resolved_assignee="$(resolve_scalar "$base_assignee" "$local_assignee" "$remote_assignee")"
@@ -258,14 +261,14 @@ END { printf "%s\t%s\t%s\t%s\t%s", state, labels, assignee, priority, milestone 
 	resolved_milestone="$(resolve_scalar "$base_milestone" "$local_milestone" "$remote_milestone")"
 
 	# --- Three-way set merge for labels ---
-	_lb="$(mktemp)"
-	_ll="$(mktemp)"
-	_lr="$(mktemp)"
-	_la="$(mktemp)"
-	_lar="$(mktemp)"
-	_lnr="$(mktemp)"
-	_lc="$(mktemp)"
-	_lres="$(mktemp)"
+	_lb="$tmpdir/lb"
+	_ll="$tmpdir/ll"
+	_lr="$tmpdir/lr"
+	_la="$tmpdir/la"
+	_lar="$tmpdir/lar"
+	_lnr="$tmpdir/lnr"
+	_lc="$tmpdir/lc"
+	_lres="$tmpdir/lres"
 
 	printf '%s' "$base_labels" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed '/^$/d' | sort -u > "$_lb"
 	printf '%s' "$local_labels" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed '/^$/d' | sort -u > "$_ll"
@@ -291,9 +294,6 @@ END { printf "%s\t%s\t%s\t%s\t%s", state, labels, assignee, priority, milestone 
 	comm -23 "$_lc" "$_lnr" > "$_lres"
 
 	resolved_labels="$(paste -sd',' "$_lres" 2>/dev/null | sed 's/,/, /g')"
-
-	rm -f "$_lb" "$_ll" "$_lr" "$_la" "${_la}.l" "${_la}.r" \
-		"$_lar" "${_lar}.l" "${_lar}.r" "$_lnr" "$_lc" "$_lres"
 
 	# --- Build merge commit ---
 	printf 'Merge issue from %s\n' "$remote" > "$tmpfile"

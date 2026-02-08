@@ -104,11 +104,11 @@ gh auth status >/dev/null 2>&1 || {
 }
 
 # Build Provider-ID index from existing issues
-provider_index="$(mktemp)"
-trap 'rm -f "$provider_index" "$tmpfile" "$user_cache_dir"/*; rmdir "$user_cache_dir" 2>/dev/null; true' EXIT
-
-# Cache directory for user lookups
-user_cache_dir="$(mktemp -d)"
+_import_tmpdir="$(mktemp -d)"
+trap 'rm -rf "$_import_tmpdir"' EXIT
+provider_index="$_import_tmpdir/provider-index"
+user_cache_dir="$_import_tmpdir/user-cache"
+mkdir -p "$user_cache_dir"
 
 git for-each-ref --format='%(refname)' refs/issues/ | while IFS= read -r ref
 do
@@ -172,7 +172,7 @@ resolve_user() {
 	cat "$cache_file"
 }
 
-tmpfile="$(mktemp)"
+tmpfile="$_import_tmpdir/msg"
 
 for number in $issue_numbers
 do
@@ -223,13 +223,8 @@ do
 	then
 		uuid="$(cat /proc/sys/kernel/random/uuid)"
 	else
-		uuid="$(od -x -N 16 /dev/urandom | head -1 | awk '{
-			printf "%s%s-%s-%s-%s-%s%s%s\n",
-				$2,$3,$4,
-				substr($5,1,4),
-				substr($5,5,4),
-				$6,$7,$8
-		}')"
+		# Fallback: generate from random bytes (od -An -tx1 is portable across BSD/GNU)
+		uuid="$(od -An -tx1 -N 16 /dev/urandom | tr -d ' \n' | sed 's/\(........\)\(....\)\(....\)\(....\)\(............\)/\1-\2-\3-\4-\5/')"
 	fi
 
 	short_id="$(printf '%s' "$uuid" | cut -c1-7)"

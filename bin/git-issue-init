@@ -45,7 +45,7 @@ git_dir="$(git rev-parse --git-dir 2>/dev/null)" || {
 }
 
 # Verify the remote exists
-if ! git remote | grep -qx "$remote"
+if ! git remote | grep -qxF "$remote"
 then
 	echo "error: remote '$remote' does not exist" >&2
 	echo "       available remotes: $(git remote | paste -sd', ' -)" >&2
@@ -56,7 +56,7 @@ fi
 existing="$(git config --get-all "remote.$remote.fetch" 2>/dev/null || true)"
 if printf '%s\n' "$existing" | grep -q 'refs/issues'
 then
-	printf 'git-issue: already configured for remote '%s'.\n' "$remote"
+	printf 'git-issue: already configured for remote '\''%s'\''.\n' "$remote"
 	exit 0
 fi
 
