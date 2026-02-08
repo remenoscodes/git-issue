@@ -201,7 +201,8 @@ do
 	labels_json="[]"
 	if test -n "$labels"
 	then
-		labels_json="$(printf '%s' "$labels" | jq -R 'split(", ")')"
+		# Split on comma (with optional space after), then trim whitespace
+		labels_json="$(printf '%s' "$labels" | jq -R 'split(",") | map(ltrimstr(" ") | rtrimstr(" "))')"
 	fi
 
 	# Build complete JSON payload
