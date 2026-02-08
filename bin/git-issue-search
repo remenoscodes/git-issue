@@ -2,6 +2,9 @@
 #
 # git-issue-search - Search issues by text pattern
 #
+# Performance: Uses a single git-log call per issue with awk matching
+# to avoid per-issue subprocess overhead (was ~10 forks/issue, now ~1).
+#
 
 set -e
 
@@ -80,51 +83,97 @@ then
 	exit 0
 fi
 
-# Build grep flags
-grep_flags="-F"
-if test "$ignore_case" -eq 1
-then
-	grep_flags="$grep_flags -i"
-fi
+# --- Optimized search ---
+# For each issue: ONE git log call outputs commit metadata + trailers + text.
+# A SINGLE awk process does pattern matching, state filtering, and formatting.
 
-found=0
-
+{
 git for-each-ref --format='%(refname)' refs/issues/ | while IFS= read -r ref
 do
-	uuid="${ref#refs/issues/}"
-	short_id="$(printf '%s' "$uuid" | cut -c1-7)"
-
-	# Get title and state
-	title="$(get_issue_title "$ref")"
-
-	state="$(git log --format='%(trailers:key=State,valueonly)' "$ref" | \
-		sed '/^$/d' | head -1)"
-	test -n "$state" || state="open"
-	state="$(printf '%s' "$state" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-
-	# Apply state filter
-	if test "$filter_state" != "all" && test "$state" != "$filter_state"
-	then
-		continue
-	fi
-
-	# Collect all text from the issue chain for searching
-	# This includes subjects and bodies of all commits
-	all_text="$(git log --format='%s%n%b' "$ref")"
-
-	# Check for match
-	if printf '%s\n' "$all_text" | grep $grep_flags -q "$pattern"
-	then
-		printf '%s [%s] %s\n' "$short_id" "$state" "$title"
-
-		# Show matching lines with context
-		printf '%s\n' "$all_text" | grep $grep_flags -n "$pattern" | head -5 | while IFS= read -r match
-		do
-			printf '       %s\n' "$match"
-		done
-
-		found=$((found + 1))
-	fi
+	printf 'ISSUE\t%s\n' "$ref"
+	git log --format='COMMIT%x09%P%x09%s%x09%at%n%(trailers)COMMIT_END%n%B%nTEXT_END' "$ref"
 done
+} | awk \
+	-v pattern="$pattern" \
+	-v filter_state="$filter_state" \
+	-v ignore_case="$ignore_case" \
+'
+BEGIN {
+	if (ignore_case) pat = tolower(pattern)
+	else pat = pattern
+}
 
-# Note: 'found' counter is in subshell due to pipe, can't access outside
+function check_match(line) {
+	if (ignore_case) return index(tolower(line), pat)
+	return index(line, pat)
+}
+
+function emit() {
+	if (ref == "") return
+
+	uuid = ref
+	sub(/^refs\/issues\//, "", uuid)
+	short_id = substr(uuid, 1, 7)
+
+	if (state == "") state = "open"
+
+	# State filter
+	if (filter_state != "all" && state != filter_state) return
+
+	# Title
+	title = (title_over != "") ? title_over : root_subj
+
+	# Check for matches across all collected text
+	matched = 0
+	match_lines = ""
+	match_count = 0
+	for (i = 1; i <= text_n; i++) {
+		if (check_match(text_arr[i])) {
+			matched = 1
+			match_count++
+			if (match_count <= 5) {
+				match_lines = match_lines "       " match_count ":" text_arr[i] "\n"
+			}
+		}
+	}
+
+	if (matched) {
+		printf "%s [%s] %s\n", short_id, state, title
+		if (match_lines != "") printf "%s", match_lines
+	}
+}
+
+/^ISSUE\t/ {
+	emit()
+	ref = substr($0, 7)
+	state = ""; title_over = ""; root_subj = ""
+	text_n = 0; in_text = 0
+	delete text_arr
+	next
+}
+
+/^COMMIT\t/ {
+	in_text = 0
+	split($0, c, "\t")
+	c_parents = c[2]
+	c_subject = c[3]
+	if (c_parents == "") root_subj = c_subject
+	# Store subject as searchable text
+	text_n++; text_arr[text_n] = c_subject
+	next
+}
+
+/^COMMIT_END/ { in_text = 1; next }
+/^TEXT_END/ { in_text = 0; next }
+
+# Trailer lines (between COMMIT and COMMIT_END)
+!in_text && /^State: /  { if (state == "") { state = $0; sub(/^State: /, "", state) } next }
+!in_text && /^Title: /  { if (title_over == "") { title_over = $0; sub(/^Title: /, "", title_over) } next }
+
+# Body text (between COMMIT_END and TEXT_END)
+in_text {
+	text_n++; text_arr[text_n] = $0
+}
+
+END { emit() }
+'

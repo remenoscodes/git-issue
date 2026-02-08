@@ -2,6 +2,9 @@
 #
 # git-issue-ls - List issues
 #
+# Performance: Uses a single git-log call per issue with awk aggregation
+# to avoid the N×M subprocess problem (was ~22 forks/issue, now ~1).
+#
 
 set -e
 
@@ -118,138 +121,114 @@ fi
 data_file="$(mktemp)"
 trap 'rm -f "$data_file"' EXIT
 
+# --- Optimized extraction ---
+# For each issue: ONE git log call outputs commit metadata lines (COMMIT\t...)
+# followed by %(trailers) as Key: Value lines, then COMMIT_END markers.
+# A SINGLE awk process aggregates per-issue data (first non-empty value
+# for each trailer key), applies filters, and outputs sort-ready rows.
+#
+# Old approach: ~22 subprocess forks per issue (5× git log + 10× sed + 5× head + cut)
+# New approach: 1 git log fork per issue + 1 awk process total
+
+{
 git for-each-ref --format='%(refname)' refs/issues/ | while IFS= read -r ref
 do
-	# Extract short ID (first 7 chars of the UUID part)
-	uuid="${ref#refs/issues/}"
-	short_id="$(printf '%s' "$uuid" | cut -c1-7)"
+	printf 'ISSUE\t%s\n' "$ref"
+	git log --format='COMMIT%x09%P%x09%s%x09%at%n%(trailers)COMMIT_END' "$ref"
+done
+} | awk \
+	-v filter_state="$filter_state" \
+	-v filter_label="$filter_label" \
+	-v filter_assignee="$filter_assignee" \
+	-v filter_priority="$filter_priority" \
+	-v sort_field="$sort_field" \
+'
+function emit() {
+	if (ref == "") return
 
-	# Get title (respects Title: trailer override)
-	title="$(get_issue_title "$ref")" || continue
+	# Extract short ID from ref
+	uuid = ref
+	sub(/^refs\/issues\//, "", uuid)
+	short_id = substr(uuid, 1, 7)
 
-	# Get current state: walk from HEAD, find first State: trailer
-	state="$(git log --format='%(trailers:key=State,valueonly)' "$ref" | \
-		sed '/^$/d' | head -1)"
+	# Default state
+	if (state == "") state = "open"
 
-	# Default to open if no state found
-	test -n "$state" || state="open"
+	# Apply filters
+	if (filter_state != "all" && state != filter_state) return
 
-	# Strip whitespace from state
-	state="$(printf '%s' "$state" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+	if (filter_label != "") {
+		found = 0
+		n = split(labels, la, /[[:space:]]*,[[:space:]]*/)
+		for (i = 1; i <= n; i++) {
+			if (la[i] == filter_label) { found = 1; break }
+		}
+		if (!found) return
+	}
 
-	# Apply state filter
-	if test "$filter_state" != "all" && test "$state" != "$filter_state"
-	then
-		continue
-	fi
+	if (filter_assignee != "" && assignee != filter_assignee) return
+	if (filter_priority != "" && priority != filter_priority) return
 
-	# Get metadata needed for filters and sorting
-	labels="$(git log --format='%(trailers:key=Labels,valueonly)' "$ref" | \
-		sed '/^$/d' | head -1)"
-	labels="$(printf '%s' "$labels" | sed 's/^[[:space:]]*//')"
+	# Title: trailer override or root commit subject
+	title = (title_over != "") ? title_over : root_subj
 
-	issue_assignee="$(git log --format='%(trailers:key=Assignee,valueonly)' "$ref" | \
-		sed '/^$/d' | head -1)"
-	issue_assignee="$(printf '%s' "$issue_assignee" | sed 's/^[[:space:]]*//')"
+	# Sort key
+	if (sort_field == "created") sk = created_ts
+	else if (sort_field == "updated") sk = updated_ts
+	else if (sort_field == "priority") {
+		if (priority == "critical") sk = 4
+		else if (priority == "high") sk = 3
+		else if (priority == "medium") sk = 2
+		else if (priority == "low") sk = 1
+		else sk = 0
+	}
+	else if (sort_field == "state") {
+		sk = (state == "open") ? 1 : 0
+	}
 
-	issue_priority="$(git log --format='%(trailers:key=Priority,valueonly)' "$ref" | \
-		sed '/^$/d' | head -1)"
-	issue_priority="$(printf '%s' "$issue_priority" | sed 's/^[[:space:]]*//')"
+	printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", sk, short_id, state, title, labels, assignee, priority, milestone
+}
 
-	issue_milestone="$(git log --format='%(trailers:key=Milestone,valueonly)' "$ref" | \
-		sed '/^$/d' | head -1)"
-	issue_milestone="$(printf '%s' "$issue_milestone" | sed 's/^[[:space:]]*//')"
+/^ISSUE\t/ {
+	emit()
+	ref = substr($0, 7)
+	state = ""; labels = ""; assignee = ""; priority = ""; milestone = ""
+	title_over = ""; root_subj = ""; created_ts = ""; updated_ts = ""
+	next
+}
 
-	# Apply label filter if specified
-	if test -n "$filter_label"
-	then
-		case ",$labels," in
-			*",$filter_label,"*|*", $filter_label,"*|*",$filter_label ,"*|*", $filter_label ,"*)
-				;;
-			*)
-				continue
-				;;
-		esac
-	fi
+/^COMMIT\t/ {
+	# Fields: COMMIT \t parents \t subject \t timestamp
+	split($0, c, "\t")
+	c_parents = c[2]
+	c_subject = c[3]
+	c_ts = c[4]
+	# First commit line = tip (newest) -> updated timestamp
+	if (updated_ts == "") updated_ts = c_ts
+	# Root commit has no parents
+	if (c_parents == "") { root_subj = c_subject; created_ts = c_ts }
+	next
+}
 
-	# Apply assignee filter
-	if test -n "$filter_assignee"
-	then
-		if test "$issue_assignee" != "$filter_assignee"
-		then
-			continue
-		fi
-	fi
+/^COMMIT_END/ { next }
 
-	# Apply priority filter
-	if test -n "$filter_priority"
-	then
-		if test "$issue_priority" != "$filter_priority"
-		then
-			continue
-		fi
-	fi
+# Trailer lines: "Key: Value" — aggregate first non-empty per key
+/^State: /     { if (state == "")     { state = $0;     sub(/^State: /, "", state) } }
+/^Labels: /    { if (labels == "")    { labels = $0;    sub(/^Labels: /, "", labels) } }
+/^Assignee: /  { if (assignee == "")  { assignee = $0;  sub(/^Assignee: /, "", assignee) } }
+/^Priority: /  { if (priority == "")  { priority = $0;  sub(/^Priority: /, "", priority) } }
+/^Milestone: / { if (milestone == "") { milestone = $0; sub(/^Milestone: /, "", milestone) } }
+/^Title: /     { if (title_over == "") { title_over = $0; sub(/^Title: /, "", title_over) } }
 
-	# Get sort key
-	case "$sort_field" in
-		created)
-			root="$(git rev-list --max-parents=0 "$ref")"
-			sort_key="$(git log -1 --format='%at' "$root")"
-			;;
-		updated)
-			sort_key="$(git log -1 --format='%at' "$ref")"
-			;;
-		priority)
-			# Map to numeric: critical=4, high=3, medium=2, low=1, none=0
-			case "$issue_priority" in
-				critical) sort_key="4" ;;
-				high)     sort_key="3" ;;
-				medium)   sort_key="2" ;;
-				low)      sort_key="1" ;;
-				*)        sort_key="0" ;;
-			esac
-			;;
-		state)
-			# open=1, closed=0 (open first by default)
-			case "$state" in
-				open)   sort_key="1" ;;
-				closed) sort_key="0" ;;
-				*)      sort_key="0" ;;
-			esac
-			;;
-	esac
-
-	# Write tab-separated: sort_key \t short_id \t state \t title \t labels \t assignee \t priority \t milestone
-	printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-		"$sort_key" "$short_id" "$state" "$title" "$labels" "$issue_assignee" "$issue_priority" "$issue_milestone"
-done > "$data_file"
+END { emit() }
+' > "$data_file"
 
 # Sort the results
 if test "$sort_reverse" -eq 1
 then
-	case "$sort_field" in
-		created|updated)
-			sorted="$(sort -t'	' -k1,1n "$data_file")"
-			;;
-		priority)
-			sorted="$(sort -t'	' -k1,1n "$data_file")"
-			;;
-		state)
-			sorted="$(sort -t'	' -k1,1n "$data_file")"
-			;;
-	esac
+	sorted="$(sort -t'	' -k1,1n "$data_file")"
 else
-	case "$sort_field" in
-		created|updated)
-			sorted="$(sort -t'	' -k1,1rn "$data_file")"
-			;;
-		priority)
-			sorted="$(sort -t'	' -k1,1rn "$data_file")"
-			;;
-		state)
-			sorted="$(sort -t'	' -k1,1rn "$data_file")"
-			;;
-	esac
+	sorted="$(sort -t'	' -k1,1rn "$data_file")"
 fi
 
 # Output the sorted results

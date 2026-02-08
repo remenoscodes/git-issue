@@ -2,6 +2,9 @@
 #
 # git-issue-fsck - Validate issue data integrity
 #
+# Performance: Uses git cat-file --batch for bulk tree checks and
+# single-pass trailer extraction to avoid per-commit subprocess forks.
+#
 
 set -e
 
@@ -51,89 +54,138 @@ git rev-parse --git-dir >/dev/null 2>&1 || {
 	exit 128
 }
 
+empty_tree="$(git hash-object -t tree /dev/null)"
+
+# --- Optimized fsck ---
+# For each issue: ONE git log call outputs commit metadata + trailers.
+# Awk validates UUID format, tree hashes, root trailer presence, and chain integrity.
+# Tree check uses %T format inline (no separate cat-file --batch needed).
+
 errors=0
 checked=0
-empty_tree="$(git hash-object -t tree /dev/null)"
 
 refs_file="$(mktemp)"
 trap 'rm -f "$refs_file"' EXIT
 
 git for-each-ref --format='%(refname)' refs/issues/ > "$refs_file"
 
-while IFS= read -r ref
-do
-	uuid="${ref#refs/issues/}"
-	short_id="$(printf '%s' "$uuid" | cut -c1-7)"
-	checked=$((checked + 1))
-	issue_ok=1
-
-	# Check UUID format
-	case "$uuid" in
-		????????-????-????-????-????????????)
-			;;
-		*)
-			printf 'error: %s: invalid UUID format: %s\n' "$short_id" "$uuid" >&2
-			errors=$((errors + 1))
-			issue_ok=0
-			;;
-	esac
-
-	# Check all commits use empty tree
-	for commit in $(git rev-list "$ref")
-	do
-		tree="$(git log -1 --format='%T' "$commit")"
-		if test "$tree" != "$empty_tree"
-		then
-			printf 'error: %s: commit %s does not use empty tree\n' \
-				"$short_id" "$(printf '%s' "$commit" | cut -c1-7)" >&2
-			errors=$((errors + 1))
-			issue_ok=0
-		fi
-	done
-
-	# Check single root commit
-	root_count="$(git rev-list --max-parents=0 "$ref" | wc -l | tr -d ' ')"
-	if test "$root_count" -ne 1
-	then
-		printf 'error: %s: expected 1 root commit, found %d\n' "$short_id" "$root_count" >&2
-		errors=$((errors + 1))
-		issue_ok=0
-	fi
-
-	# Check root commit has required trailers
-	root="$(git rev-list --max-parents=0 "$ref" | head -1)"
-
-	state="$(git log -1 --format='%(trailers:key=State,valueonly)' "$root" | sed '/^$/d')"
-	state="$(printf '%s' "$state" | sed 's/^[[:space:]]*//')"
-	if test -z "$state"
-	then
-		printf 'error: %s: root commit missing State: trailer\n' "$short_id" >&2
-		errors=$((errors + 1))
-		issue_ok=0
-	fi
-
-	fv="$(git log -1 --format='%(trailers:key=Format-Version,valueonly)' "$root" | sed '/^$/d')"
-	fv="$(printf '%s' "$fv" | sed 's/^[[:space:]]*//')"
-	if test -z "$fv"
-	then
-		printf 'error: %s: root commit missing Format-Version: trailer\n' "$short_id" >&2
-		errors=$((errors + 1))
-		issue_ok=0
-	fi
-
-	if test "$issue_ok" -eq 1 && test "$quiet" -eq 0
-	then
-		printf 'ok %s\n' "$short_id"
-	fi
-done < "$refs_file"
-
-if test "$checked" -eq 0
+# If no issues exist
+if ! test -s "$refs_file"
 then
 	printf 'No issues found.\n'
-elif test "$errors" -eq 0
-then
-	printf 'Checked %d issues, no errors found.\n' "$checked"
-else
-	printf 'Checked %d issues, %d errors found.\n' "$checked" "$errors" >&2
-	exit 1
+	exit 0
 fi
+
+# Process all issues through a single awk pipeline
+result="$({
+while IFS= read -r ref
+do
+	printf 'ISSUE\t%s\n' "$ref"
+	git log --format='COMMIT%x09%T%x09%P%x09%at%n%(trailers)COMMIT_END' "$ref"
+done < "$refs_file"
+} | awk \
+	-v empty_tree="$empty_tree" \
+	-v quiet="$quiet" \
+'
+function emit() {
+	if (ref == "") return
+	checked++
+
+	uuid = ref
+	sub(/^refs\/issues\//, "", uuid)
+	short_id = substr(uuid, 1, 7)
+	issue_ok = 1
+
+	# Check UUID format
+	if (uuid !~ /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/) {
+		printf "error: %s: invalid UUID format: %s\n", short_id, uuid > "/dev/stderr"
+		err_count++
+		issue_ok = 0
+	}
+
+	# Check all commits use empty tree
+	for (i = 1; i <= commit_n; i++) {
+		if (trees[i] != empty_tree) {
+			printf "error: %s: commit %s does not use empty tree\n", short_id, substr(shas[i], 1, 7) > "/dev/stderr"
+			err_count++
+			issue_ok = 0
+		}
+	}
+
+	# Check single root (commits with no parents)
+	if (root_count != 1) {
+		printf "error: %s: expected 1 root commit, found %d\n", short_id, root_count > "/dev/stderr"
+		err_count++
+		issue_ok = 0
+	}
+
+	# Check root has State: and Format-Version: trailers
+	if (!has_state) {
+		printf "error: %s: root commit missing State: trailer\n", short_id > "/dev/stderr"
+		err_count++
+		issue_ok = 0
+	}
+	if (!has_fv) {
+		printf "error: %s: root commit missing Format-Version: trailer\n", short_id > "/dev/stderr"
+		err_count++
+		issue_ok = 0
+	}
+
+	if (issue_ok && !quiet) printf "ok %s\n", short_id
+}
+
+BEGIN { err_count = 0; checked = 0 }
+
+/^ISSUE\t/ {
+	emit()
+	ref = substr($0, 7)
+	commit_n = 0; root_count = 0; in_root_trailers = 0
+	has_state = 0; has_fv = 0
+	delete trees; delete shas
+	next
+}
+
+/^COMMIT\t/ {
+	split($0, c, "\t")
+	commit_n++
+	trees[commit_n] = c[2]
+	parents = c[3]
+	# Root commit has no parents
+	if (parents == "") {
+		root_count++
+		in_root_trailers = 1
+	} else {
+		in_root_trailers = 0
+	}
+	next
+}
+
+/^COMMIT_END/ { in_root_trailers = 0; next }
+
+# Only check trailers on root commits
+in_root_trailers && /^State: /          { has_state = 1 }
+in_root_trailers && /^Format-Version: / { has_fv = 1 }
+
+END {
+	emit()
+	if (checked == 0) {
+		printf "No issues found.\n"
+	} else if (err_count == 0) {
+		printf "Checked %d issues, no errors found.\n", checked
+	} else {
+		printf "Checked %d issues, %d errors found.\n", checked, err_count > "/dev/stderr"
+		print "EXIT_1"
+	}
+}
+')"
+
+# Check if awk signaled an error exit
+case "$result" in
+	*EXIT_1*)
+		printf '%s\n' "$result" | grep -v '^EXIT_1$'
+		exit 1
+		;;
+	*)
+		printf '%s\n' "$result"
+		;;
+esac
